@@ -1,34 +1,41 @@
 package com.campus.rag.controller;
 
-import com.campus.rag.common.Result;
 import com.campus.rag.service.AiChatService;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-/**
- * 核心对话接口
- */
+// 新增引入 MediaType 和 SseEmitter
+import org.springframework.http.MediaType;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
 @RestController
 @RequestMapping("/api/chat")
 public class ChatController {
 
     private final AiChatService aiChatService;
 
+    // 构造器注入 Service
     public ChatController(AiChatService aiChatService) {
         this.aiChatService = aiChatService;
     }
 
-    @PostMapping
-    public Result<String> chat(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                               @RequestBody ChatRequest request) {
-        if (userId == null) {
-            userId = 1L; // 临时默认，后续从 token 解析
-        }
-        String reply = aiChatService.chat(userId, request.getMessage());
-        return Result.success(reply);
+    /**
+     * 同步测试接口：GET /api/chat/simple?message=你的问题
+     * * @param message 用户的提问文本
+     * @return 纯文本响应结果
+     */
+    @GetMapping("/simple")
+    public String simpleChat(@RequestParam String message) {
+        // 调用 Service 层向大模型提问，并返回结果给调用方
+        return aiChatService.chatWithAi(message);
     }
 
-    @lombok.Data
-    public static class ChatRequest {
-        private String message;
+    // 新增！流式！测试接口
+    @GetMapping(value = "/stream", produces = "text/event-stream;charset=UTF-8")
+    public SseEmitter streamChat(@RequestParam String message) {
+        // 直接调用 Service 层的流式方法
+        return aiChatService.streamChatWithAi(message);
     }
 }

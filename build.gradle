@@ -18,6 +18,10 @@ configurations {
     compileOnly {
         extendsFrom annotationProcessor
     }
+    //全局排除 slf4j-simple 冲突
+    configureEach {
+        exclude group: 'org.slf4j', module: 'slf4j-simple'
+    }
 }
 
 repositories {
@@ -28,6 +32,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:4.0.1'
+    implementation 'dev.langchain4j:langchain4j-dashscope-spring-boot-starter:0.35.0'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'com.mysql:mysql-connector-j'
     annotationProcessor 'org.projectlombok:lombok'
