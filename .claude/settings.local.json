@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(netstat -ano)",
+      "Bash(findstr ':5173 :5174')"
+    ]
+  }
+}

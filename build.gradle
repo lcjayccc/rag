@@ -19,6 +19,7 @@ configurations {
         extendsFrom annotationProcessor
     }
     //全局排除 slf4j-simple 冲突
+
     configureEach {
         exclude group: 'org.slf4j', module: 'slf4j-simple'
     }
@@ -29,10 +30,18 @@ repositories {
 }
 
 dependencies {
+    //0327 新增约束块，强制升级存在漏洞的底层依赖
+    constraints {
+        implementation('com.fasterxml.jackson.core:jackson-core:2.20.3') {
+            because '修复 Checkmarx 扫描出的 GHSA-72hv-8253-57qq DoS 安全漏洞'
+        }
+    }
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:4.0.1'
     implementation 'dev.langchain4j:langchain4j-dashscope-spring-boot-starter:0.35.0'
+    // 引入 LangChain4j 的 PDF 解析器
+    implementation 'dev.langchain4j:langchain4j-document-parser-apache-pdfbox:0.35.0'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'com.mysql:mysql-connector-j'
     annotationProcessor 'org.projectlombok:lombok'
