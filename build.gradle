@@ -40,7 +40,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:4.0.1'
     implementation 'dev.langchain4j:langchain4j-dashscope-spring-boot-starter:0.35.0'
-    // 引入 LangChain4j 的 PDF 解析器
+    // LangChain4j 核心：InMemoryEmbeddingStore、文本切片器、EmbeddingStoreIngestor 等
+    implementation 'dev.langchain4j:langchain4j:0.35.0'
+    // PDF 解析器
     implementation 'dev.langchain4j:langchain4j-document-parser-apache-pdfbox:0.35.0'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'com.mysql:mysql-connector-j'

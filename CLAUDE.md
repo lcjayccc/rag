@@ -1,6 +1,7 @@
 # 🤖 校园智能问答系统 (RAG) - AI 辅助开发上下文指南
 
 你好，Claude Code！当你读取到这份文件时，请你扮演一位**资深全栈架构师**，协助我完成我的本科毕业设计项目
+
 ## 语言要求
 - 必须始终使用**简体中文**回答我的所有问题。
 - 在分析文件、阐述思路和解释报错时，请使用通俗易懂的中文。
@@ -14,40 +15,44 @@
 请严格按照以下技术栈和版本提供代码，不要引入未经验证的重量级中间件（如 Kafka 等）：
 - **后端**：Java 21, Spring Boot 3 (v4.0+), MyBatis
 - **大模型生态**：LangChain4j (`langchain4j-dashscope-spring-boot-starter:0.35.0`)
-- **前端**：Vue 3 (Composition API / `<script setup>`), Vite, Element Plus
-- **基础设施 (规划中)**：Docker, MySQL, Redis, Chroma (向量数据库)
+- **前端**：Vue 3 (Composition API / `<script setup>`), Vite, Element Plus, Marked + DOMPurify
+- **基础设施**：MySQL (关系型数据)
+- **向量数据库**：**当前 MVP 阶段使用 LangChain4j `InMemoryEmbeddingStore`** (暂不引入 Chroma/Docker)
 - **大模型厂商**：阿里云百炼 通义千问 API (Qwen-Plus)
 
 ## 📊 三、 当前工程进度 (Current Status)
 
-### ✅ 已完成的基建 (已推送到 GitHub)
-1. **后端骨架**：标准的 Controller / Service / Mapper / Entity 分层架构已搭建。
-2. **大模型接入**：`AiChatServiceImpl` 已成功接通通义千问 API。
-3. **SSE 流式接口**：后端的 `/api/chat/stream` 接口已完成 `SseEmitter` 与 `StreamingChatLanguageModel` 的改造，并已强制配置 `charset=UTF-8` 解决乱码。在浏览器地址栏直接请求该接口，已能成功观察到 `data:` 前缀的流式报文持续输出。
-4. **项目规范**：已解决 `slf4j-simple` 依赖冲突；所有 `.properties` 文件已统一为 UTF-8 编码。
+### ✅ 已完成的基建 (已封板)
+1. **后端大模型通信**：`/api/chat/stream` 接口已打通通义千问的 SSE 流式响应，统一返回体与异常处理已完善。
+2. **前端全栈 UI 与交互**：仿 Claude 风格双栏布局完成。借助 Vite Proxy 彻底解决跨域(CORS)问题；实现了基于 `EventSource` 的流式打字机效果、安全的 Markdown 富文本渲染以及 `requestAnimationFrame` 滚动节流。**前端代码目前处于封板状态 (Code Freeze)**。
 
-### 🚧 目前的阻碍与未验证项 (当前紧要任务)
-1. **跨域冲突 (CORS)**：后端虽然预留了 `CorsConfig`，但由于前端尚未搭建，尚未在真实跨端口环境（如 `5173` 调 `8080`）下进行联调验证，目前存在跨域隐患。
-2. **前端流式渲染缺失**：**系统目前完全没有进行过 HTML 或 Vue 脚本的流式输出脱壳验证**。前端尚未搭建，无法验证大模型打字机效果的真实 UI 渲染。
-3. **RAG 核心未启动**：文档的上传、PDF 文本提取、切片（Chunking）以及 Chroma 向量化入库尚未编写。
+### 🚧 当前开发焦点 (RAG 核心闭环)
+我们正在攻坚 `DocumentService` 模块，采用 MVP（最小可行性产品）策略快速打通文档解析。
+1. **数据库进度**：MySQL 的 `campusrag` 数据库已创建 `document` 和 `user` 表。
+2. **切片策略**：规划使用 `ChunkMode.RECURSIVE_SEMANTIC` 递归语义切片策略（借鉴开源项目 `ragent` 思路）。
 
-## 🎯 四、 后续开发路线 (Next Steps)
+## ⚠️ 四、 开发纪律约束
+1. **安全第一**：严禁在任何生成的代码或日志中包含真实的 `api-key`。
+2. **防过度工程 (极度重要)**：绝对不要引入 Redis、Sa-Token 等复杂中间件。保持单进程高效调用。
+3. **扎实推进**：不要跳步。严格按照下方的 8 步路线图执行，确保每一步的物理落盘或内存打印 100% 成功。
 
-当你协助我编写代码时，请按照以下优先级推进：
-1. **阶段一：前端基建与端到端联调**
-    - 协助我初始化 Vue3 + Vite 项目。
-    - 编写前端 `EventSource` 通信逻辑，彻底解决 CORS 跨域问题。
-    - 实现前端聊天气泡的流式打字机渲染（剥离 SSE 的 `data:` 前缀）。
-2. **阶段二：RAG 文档解析核心 (`DocumentService`)**
-    - 引入 LangChain4j 的 Document Loader。
-    - 编写 Java 逻辑读取本地 PDF，并按合理策略进行文本切分。
-3. **阶段三：基础设施与向量检索**
-    - 编写 `docker-compose.yml` 统一部署 MySQL 和 Chroma。
-    - 实现“文档切片 -> 向量入库 -> 提问相似度检索 (Top-K)”的完整闭环。
+## 🎯 五、 RAG 核心闭环作战路线图 (MVP阶段)
+**核心策略**：使用 `InMemoryEmbeddingStore` 极速跑通，利用 Spring Boot 的 `@EventListener` 在系统重启时从磁盘重载文档进行预热，避免引入外部中间件。
 
-## ⚠️ 五、 AI 编程交互规范约束
-在为我生成代码或解答问题时，请严格遵守以下规则：
-1. **防御性编程优先**：涉及中文字符传输时（如接口、文件读取），必须显式声明 `UTF-8` 编码。
-2. **保持代码精简**：不要为了炫技引入复杂的过度设计，本项目是本科毕业设计，首要目标是 MVP（最小可行性产品）跑通。
-3. **知其然知其所以然**：我需要准备毕业答辩和后续的软件开发岗位面试。因此，在提供核心代码（如 SSE 流处理、向量化算法）时，请务必在代码注释或下方简短解释**底层原理**。
-4. **完整代码块**：请尽量输出可以直接覆盖运行的完整代码块，并清晰标明文件路径。
+**执行步调 (The 8-Step Plan)**：
+- [x] Step 1：执行 schema.sql，初始化 `user` 和 `document` 表。（已完成）
+- [ ] Step 2：修改 build.gradle，补全 `langchain4j` 核心与 PDF 解析依赖。
+- [ ] Step 3：配置 application.properties（上传路径与 DashScope Embedding 模型）。
+- [ ] Step 4：重写 `DocumentServiceImpl`（物理落盘 + 借鉴 `ragent` 的多策略切片 + 内存向量化入库）。
+- [ ] Step 5：创建 `RagService`（封装向量检索与 .st 模板驱动的 Prompt 组装逻辑）。
+- [ ] Step 6：改造 `AiChatServiceImpl`（调用 RagService 注入上下文，拦截普通聊天）。
+- [ ] Step 7：实现系统启动预热（扫描 status=2 的文档重新加载进内存）。
+- [ ] Step 8：前后端全链路流式联调测试。
+- 按 10 步路线图，当前完成 Step 1-5，剩余任务：
+| **Step** | **文件**                                               | **内容**                                                     | **状态** |
+| -------- | ------------------------------------------------------ | ------------------------------------------------------------ | -------- |
+| Step 6   | `service/RagService.java` + `impl/RagServiceImpl.java` | 向量检索 Top-K + System Prompt 拼装（含日期注入 + 河工大人设） | ⏳ 待开始 |
+| Step 7   | `service/impl/AiChatServiceImpl.java`                  | 改造流式对话：先调 RagService 获取增强 Prompt，再调 LLM      | ⏳ 待开始 |
+| Step 8   | `controller/ChatController.java`                       | `SseEmitter(0L)` 替换固定超时 + 流结束时发送 `[DONE]` 事件   | ⏳ 待开始 |
+| Step 9   | `service/KnowledgeWarmupService.java`                  | 启动时扫描 status=2 文档，重新向量化填充内存库               | ⏳ 待开始 |
+| Step 10  | —                                                      | 前后端联调：上传 PDF → 提问 → 验证 RAG 答案引用知识库内容    | ⏳ 待开始 |
