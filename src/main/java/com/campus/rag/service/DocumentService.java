@@ -28,4 +28,5 @@ public interface DocumentService {
      * 根据 ID 删除文档
      */
     void deleteById(Long id);
+
 }

@@ -3,16 +3,8 @@ package com.campus.rag.service.impl;
 import com.campus.rag.dto.DocumentIngestionContext;
 import com.campus.rag.entity.Document;
 import com.campus.rag.mapper.DocumentMapper;
+import com.campus.rag.service.DocumentIndexingService;
 import com.campus.rag.service.DocumentService;
-import dev.langchain4j.data.document.parser.apache.pdfbox.ApachePdfBoxDocumentParser;
-import dev.langchain4j.data.document.loader.FileSystemDocumentLoader;
-import dev.langchain4j.data.document.splitter.DocumentSplitters;
-import dev.langchain4j.data.document.DocumentSplitter;
-import dev.langchain4j.data.document.Metadata;
-import dev.langchain4j.data.embedding.Embedding;
-import dev.langchain4j.data.segment.TextSegment;
-import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -23,7 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -37,18 +28,15 @@ import java.util.List;
 public class DocumentServiceImpl implements DocumentService {
 
     private final DocumentMapper documentMapper;
-    private final EmbeddingModel embeddingModel;
-    private final InMemoryEmbeddingStore<TextSegment> embeddingStore;
+    private final DocumentIndexingService documentIndexingService;
 
     @Value("${app.upload.path}")
     private String uploadPath;
 
     public DocumentServiceImpl(DocumentMapper documentMapper,
-                               EmbeddingModel embeddingModel,
-                               InMemoryEmbeddingStore<TextSegment> embeddingStore) {
+                               DocumentIndexingService documentIndexingService) {
         this.documentMapper = documentMapper;
-        this.embeddingModel = embeddingModel;
-        this.embeddingStore = embeddingStore;
+        this.documentIndexingService = documentIndexingService;
     }
 
     // =========================================================================
@@ -74,24 +62,9 @@ public class DocumentServiceImpl implements DocumentService {
             documentMapper.updateById(doc);
             log.info("[摄入管道] [文档ID={}] ✅ 步骤 1/4 — 文件落盘成功: {}", doc.getId(), savedPath);
 
-            // (c-1) 解析 PDF → LangChain4j Document
-            dev.langchain4j.data.document.Document lcDoc = parseDocument(savedPath);
-            ctx.setParsedDocument(lcDoc);
-            log.info("[摄入管道] [文档ID={}] ✅ 步骤 2/4 — PDF 解析完成，原始文本长度: {} 字符",
-                    doc.getId(), lcDoc.text().length());
-
-            // (c-2) 递归切片（500字符/块，50字符重叠），并注入溯源元数据
-            List<TextSegment> chunks = splitAndEnrich(lcDoc, doc);
-            ctx.setChunks(chunks);
-            log.info("[摄入管道] [文档ID={}] ✅ 步骤 3/4 — 切片完成，共 {} 个 Chunk（策略: recursive 500/50）",
-                    doc.getId(), chunks.size());
-
-            // (d) 批量向量化，写入 InMemoryEmbeddingStore
-            List<Embedding> embeddings = embeddingModel.embedAll(chunks).content();
-            ctx.setEmbeddings(embeddings);
-            embeddingStore.addAll(embeddings, chunks);
-            log.info("[摄入管道] [文档ID={}] ✅ 步骤 4/4 — 向量化完成，向量维度: {}，已写入 EmbeddingStore",
-                    doc.getId(), embeddings.isEmpty() ? 0 : embeddings.get(0).vector().length);
+            // (c/d) 解析、切片、向量化并写入 InMemoryEmbeddingStore
+            documentIndexingService.index(doc, savedPath);
+            log.info("[摄入管道] [文档ID={}] ✅ 步骤 2/2 — 文档索引完成", doc.getId());
 
             // (e) DB 最终状态：status=2 已完成
             doc.setStatus(2);
@@ -146,32 +119,6 @@ public class DocumentServiceImpl implements DocumentService {
         Path targetPath = uploadDir.resolve(safeFileName);
         file.transferTo(targetPath.toFile());
         return targetPath;
-    }
-
-    /**
-     * 使用 Apache PDFBox 解析 PDF 文件为 LangChain4j Document
-     */
-    private dev.langchain4j.data.document.Document parseDocument(Path filePath) {
-        return FileSystemDocumentLoader.loadDocument(filePath, new ApachePdfBoxDocumentParser());
-    }
-
-    /**
-     * 递归切片，并为每个 Chunk 注入溯源元数据（documentId / fileName / chunkIndex）
-     */
-    private List<TextSegment> splitAndEnrich(dev.langchain4j.data.document.Document lcDoc,
-                                             Document dbDoc) {
-        DocumentSplitter splitter = DocumentSplitters.recursive(500, 50);
-        List<TextSegment> rawChunks = splitter.split(lcDoc);
-
-        List<TextSegment> enriched = new ArrayList<>(rawChunks.size());
-        for (int i = 0; i < rawChunks.size(); i++) {
-            Metadata meta = new Metadata();
-            meta.put("documentId", String.valueOf(dbDoc.getId()));
-            meta.put("fileName", dbDoc.getFileName());
-            meta.put("chunkIndex", String.valueOf(i));
-            enriched.add(TextSegment.from(rawChunks.get(i).text(), meta));
-        }
-        return enriched;
     }
 
     // =========================================================================

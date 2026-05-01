@@ -15,6 +15,8 @@ public interface DocumentMapper {
 
     List<Document> selectByUserId(Long userId);
 
+    List<Document> selectCompleted();
+
     int insert(Document document);
 
     int updateById(Document document);

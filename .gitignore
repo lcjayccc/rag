@@ -35,3 +35,9 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Local AI tooling ###
+.codex/
+
+### Local secrets ###
+src/main/resources/application-local.properties

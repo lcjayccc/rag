@@ -1,7 +1,9 @@
 package com.campus.rag.service.impl;
 
 import com.campus.rag.service.AiChatService;
+import com.campus.rag.service.RagService;
 import dev.langchain4j.model.chat.ChatLanguageModel;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 //新增5个是流式输出必须导入的包
 import dev.langchain4j.data.message.AiMessage;
@@ -11,6 +13,7 @@ import dev.langchain4j.model.output.Response;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 
+@Slf4j
 @Service
 public class AiChatServiceImpl implements AiChatService {
 
@@ -19,11 +22,13 @@ public class AiChatServiceImpl implements AiChatService {
     private final ChatLanguageModel chatLanguageModel;
     // 新增：LangChain4j 自动装配的流式模型
     private final StreamingChatLanguageModel streamingChatLanguageModel;
+    private final RagService ragService; // 【新增注入】
 
     // 构造器注入两个模型
-    public AiChatServiceImpl(ChatLanguageModel chatLanguageModel, StreamingChatLanguageModel streamingChatLanguageModel) {
+    public AiChatServiceImpl(ChatLanguageModel chatLanguageModel, StreamingChatLanguageModel streamingChatLanguageModel, RagService ragService) {
         this.chatLanguageModel = chatLanguageModel;
         this.streamingChatLanguageModel = streamingChatLanguageModel;//新增流式模型
+        this.ragService = ragService;
     }
 
     //同步聊天方式
@@ -35,33 +40,58 @@ public class AiChatServiceImpl implements AiChatService {
     // 新增 完整的流式输出处理逻辑
     @Override
     public SseEmitter streamChatWithAi(String userMessage) {
-        // 1. 创建 SseEmitter 实例，60000L 表示超时时间为 60 秒
-        SseEmitter emitter = new SseEmitter(60000L);
+        // 【Step 8】: 将超时时间设为 0L（永不超时），防止长回答被 Spring Boot 强行截断
+        SseEmitter emitter = new SseEmitter(0L);
 
-        // 2. 调用流式大模型，并传入一个处理器来监听 AI 吐出的每一个字
-        streamingChatLanguageModel.generate(userMessage, new StreamingResponseHandler<>() {
+        // 【Step 7】: 调用 RAG 大脑，把简短的用户问题变成带有上下文的开卷超级 Prompt
+        String augmentedPrompt = ragService.buildRagPrompt(userMessage);
+        log.info("【流式对话】开卷考试试卷已下发大模型，准备生成回答...");
+
+        // 将包装好的超级 Prompt 喂给千问
+        streamingChatLanguageModel.generate(augmentedPrompt, new StreamingResponseHandler<>() {
 
             @Override
             public void onNext(String token) {
-                // 当 AI 生成一个字（token）时，立刻通过 emitter 发送给前端浏览器
                 try {
                     emitter.send(token);
-                } catch (IOException e) {
-                    // 发生网络异常（比如用户突然关闭浏览器网页），结束流
-                    emitter.completeWithError(e);
+                } catch (Exception e) {
+                    // 【优化 2】：前端主动断开连接（如关闭网页），静默关闭即可，不惊动全局异常处理
+                    emitter.complete();
                 }
             }
 
             @Override
             public void onComplete(Response<AiMessage> response) {
-                // 当整段回答全部生成完毕时，通知前端结束流
+                try {
+                    // AI 回答完毕，主动向前端发送 [DONE] 信号
+                    emitter.send("[DONE]");
+                } catch (Exception e) {
+                    log.debug("发送 [DONE] 信号时前端已断开");
+                }
                 emitter.complete();
             }
 
             @Override
             public void onError(Throwable error) {
-                // 当调用大模型发生报错时（如 API Key 欠费等），抛出异常
-                emitter.completeWithError(error);
+                // 判断是否是正常的客户端断开连接
+                String errorMsg = error.getMessage() != null ? error.getMessage().toLowerCase() : "";
+                if (errorMsg.contains("broken pipe") || errorMsg.contains("clientabortexception")) {
+                    log.info("【流式对话】用户主动终止了对话接收");
+                    emitter.complete();
+                    return;
+                }
+
+                log.error("【流式对话】大模型生成异常", error);
+                try {
+                    // 给前端发送友好的错误提示（支持 Markdown 渲染加粗）
+                    emitter.send("\n\n**（系统异常：AI 思考被意外中断，请稍后重试）**");
+                    emitter.send("[DONE]");
+                } catch (Exception e) {
+                    // 此时前端可能已断开，忽略发送失败
+                }
+
+                // 【优化 1】：既然已经优雅通知前端并 [DONE]，这里正常关闭即可，避免触发 Spring 的 Response committed 异常
+                emitter.complete();
             }
         });
 

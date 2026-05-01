@@ -23,6 +23,11 @@
         FROM document WHERE user_id = #{userId}
     </select>
 
+    <select id="selectCompleted" resultMap="BaseResultMap">
+        SELECT id, user_id, file_name, file_path, file_type, status, create_time, update_time
+        FROM document WHERE status = 2
+    </select>
+
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO document (user_id, file_name, file_path, file_type, status, create_time, update_time)
         VALUES (#{userId}, #{fileName}, #{filePath}, #{fileType}, #{status}, #{createTime}, #{updateTime})
