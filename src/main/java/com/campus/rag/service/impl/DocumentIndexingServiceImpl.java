@@ -5,7 +5,9 @@ import com.campus.rag.service.DocumentIndexingService;
 import dev.langchain4j.data.document.DocumentSplitter;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.document.loader.FileSystemDocumentLoader;
+import dev.langchain4j.data.document.DocumentParser;
 import dev.langchain4j.data.document.parser.apache.pdfbox.ApachePdfBoxDocumentParser;
+import dev.langchain4j.data.document.parser.apache.poi.ApachePoiDocumentParser;
 import dev.langchain4j.data.document.splitter.DocumentSplitters;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
@@ -17,10 +19,16 @@ import org.springframework.stereotype.Service;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 @Slf4j
 @Service
 public class DocumentIndexingServiceImpl implements DocumentIndexingService {
+
+    private static final Set<String> OFFICE_EXTENSIONS = Set.of(
+            "doc", "docx", "xls", "xlsx", "ppt", "pptx"
+    );
 
     private final EmbeddingModel embeddingModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
@@ -34,8 +42,8 @@ public class DocumentIndexingServiceImpl implements DocumentIndexingService {
     @Override
     public void index(Document document, Path filePath) {
         dev.langchain4j.data.document.Document lcDoc = parseDocument(filePath);
-        log.info("[文档索引] [文档ID={}] PDF 解析完成，原始文本长度: {} 字符",
-                document.getId(), lcDoc.text().length());
+        log.info("[文档索引] [文档ID={}] 文件解析完成，类型: {}，原始文本长度: {} 字符",
+                document.getId(), document.getFileType(), lcDoc.text().length());
 
         List<TextSegment> chunks = splitAndEnrich(lcDoc, document);
         log.info("[文档索引] [文档ID={}] 切片完成，共 {} 个 Chunk（策略: recursive 500/50）",
@@ -48,7 +56,27 @@ public class DocumentIndexingServiceImpl implements DocumentIndexingService {
     }
 
     private dev.langchain4j.data.document.Document parseDocument(Path filePath) {
-        return FileSystemDocumentLoader.loadDocument(filePath, new ApachePdfBoxDocumentParser());
+        return FileSystemDocumentLoader.loadDocument(filePath, parserFor(filePath));
+    }
+
+    private DocumentParser parserFor(Path filePath) {
+        String extension = getFileExtension(filePath);
+        if ("pdf".equals(extension)) {
+            return new ApachePdfBoxDocumentParser();
+        }
+        if (OFFICE_EXTENSIONS.contains(extension)) {
+            return new ApachePoiDocumentParser();
+        }
+        throw new IllegalArgumentException("不支持的文件类型: " + extension);
+    }
+
+    private String getFileExtension(Path filePath) {
+        String fileName = filePath.getFileName().toString().toLowerCase(Locale.ROOT);
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex < 0 || dotIndex == fileName.length() - 1) {
+            return "";
+        }
+        return fileName.substring(dotIndex + 1);
     }
 
     private List<TextSegment> splitAndEnrich(dev.langchain4j.data.document.Document lcDoc,

@@ -1,5 +1,6 @@
 package com.campus.rag.service.impl;
 
+import com.campus.rag.common.exception.BusinessException;
 import com.campus.rag.dto.DocumentIngestionContext;
 import com.campus.rag.entity.Document;
 import com.campus.rag.mapper.DocumentMapper;
@@ -15,7 +16,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.Set;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 文档摄入管道实现（Step 5）
@@ -26,6 +29,10 @@ import java.util.List;
 @Slf4j
 @Service
 public class DocumentServiceImpl implements DocumentService {
+
+    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of(
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"
+    );
 
     private final DocumentMapper documentMapper;
     private final DocumentIndexingService documentIndexingService;
@@ -45,6 +52,8 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public Document upload(Long userId, MultipartFile file) {
+        validateSupportedDocument(file);
+
         DocumentIngestionContext ctx = new DocumentIngestionContext();
         ctx.setRawFile(file);
 
@@ -93,17 +102,33 @@ public class DocumentServiceImpl implements DocumentService {
      * 初始化 DB 记录，status=1（处理中）
      */
     private Document initDbRecord(Long userId, MultipartFile file) {
+        String originalFileName = file.getOriginalFilename() != null
+                ? file.getOriginalFilename() : "unknown.pdf";
+
         Document doc = new Document();
         doc.setUserId(userId);
-        doc.setFileName(file.getOriginalFilename() != null
-                ? file.getOriginalFilename() : "unknown.pdf");
+        doc.setFileName(originalFileName);
         doc.setFilePath("");          // 落盘后回填
-        doc.setFileType(file.getContentType());
+        doc.setFileType(getFileExtension(originalFileName));
         doc.setStatus(1);             // 1 = 处理中
         doc.setCreateTime(LocalDateTime.now());
         doc.setUpdateTime(LocalDateTime.now());
         documentMapper.insert(doc);   // 执行后 doc.getId() 由 MyBatis 自动回填
         return doc;
+    }
+
+    /**
+     * 后端兜底校验，避免绕过前端限制上传不支持的文件。
+     */
+    private void validateSupportedDocument(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException(400, "请选择需要上传的校园资料文件");
+        }
+
+        String extension = getFileExtension(file.getOriginalFilename());
+        if (!SUPPORTED_EXTENSIONS.contains(extension)) {
+            throw new BusinessException(400, "当前知识库支持 PDF、Word、Excel、PPT 文件；图片 OCR 将在后续阶段支持");
+        }
     }
 
     /**
@@ -114,11 +139,35 @@ public class DocumentServiceImpl implements DocumentService {
         if (!Files.exists(uploadDir)) {
             Files.createDirectories(uploadDir);
         }
-        String safeFileName = docId + "_" + (file.getOriginalFilename() != null
-                ? file.getOriginalFilename() : "document.pdf");
+        String safeFileName = docId + "_" + sanitizeFileName(file.getOriginalFilename());
         Path targetPath = uploadDir.resolve(safeFileName);
         file.transferTo(targetPath.toFile());
         return targetPath;
+    }
+
+    private String sanitizeFileName(String originalFileName) {
+        if (originalFileName == null || originalFileName.isBlank()) {
+            return "document.pdf";
+        }
+
+        String normalized = originalFileName.replace("\\", "/");
+        String baseName = normalized.substring(normalized.lastIndexOf('/') + 1)
+                .replace("..", "")
+                .trim();
+        return baseName.isBlank() ? "document.pdf" : baseName;
+    }
+
+    private String getFileExtension(String originalFileName) {
+        if (originalFileName == null || originalFileName.isBlank()) {
+            return "";
+        }
+
+        String fileName = originalFileName.toLowerCase(Locale.ROOT);
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex < 0 || dotIndex == fileName.length() - 1) {
+            return "";
+        }
+        return fileName.substring(dotIndex + 1);
     }
 
     // =========================================================================
@@ -132,6 +181,25 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public void deleteById(Long id) {
+        Document document = documentMapper.selectById(id);
+        if (document == null) {
+            throw new BusinessException(404, "文档不存在或已被删除");
+        }
+
         documentMapper.deleteById(id);
+
+        String filePath = document.getFilePath();
+        if (filePath == null || filePath.isBlank()) {
+            return;
+        }
+
+        try {
+            boolean deleted = Files.deleteIfExists(Paths.get(filePath));
+            if (deleted) {
+                log.info("[文档管理] [文档ID={}] 已删除本地文件: {}", id, filePath);
+            }
+        } catch (IOException e) {
+            log.warn("[文档管理] [文档ID={}] 数据库记录已删除，但本地文件清理失败: {}", id, filePath, e);
+        }
     }
 }

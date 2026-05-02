@@ -21,11 +21,13 @@
     <select id="selectByUserId" resultMap="BaseResultMap">
         SELECT id, user_id, file_name, file_path, file_type, status, create_time, update_time
         FROM document WHERE user_id = #{userId}
+        ORDER BY update_time DESC, id DESC
     </select>
 
     <select id="selectCompleted" resultMap="BaseResultMap">
         SELECT id, user_id, file_name, file_path, file_type, status, create_time, update_time
         FROM document WHERE status = 2
+        ORDER BY update_time DESC, id DESC
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">

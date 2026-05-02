@@ -29,7 +29,7 @@ public class RagServiceImpl implements RagService {
     private final EmbeddingModel embeddingModel;
 
     // 动态读取外部 .st 模板
-    @Value("classpath:prompt/answer-chat-kb.st")
+    @Value("classpath:prompts/answer-chat-kb.st")
     private Resource promptTemplateResource;
 
     public RagServiceImpl(EmbeddingStore<TextSegment> embeddingStore, EmbeddingModel embeddingModel) {

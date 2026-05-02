@@ -44,6 +44,8 @@ dependencies {
     implementation 'dev.langchain4j:langchain4j:0.35.0'
     // PDF 解析器
     implementation 'dev.langchain4j:langchain4j-document-parser-apache-pdfbox:0.35.0'
+    // Microsoft Office 解析器：doc/docx/xls/xlsx/ppt/pptx
+    implementation 'dev.langchain4j:langchain4j-document-parser-apache-poi:0.35.0'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'com.mysql:mysql-connector-j'
     annotationProcessor 'org.projectlombok:lombok'
