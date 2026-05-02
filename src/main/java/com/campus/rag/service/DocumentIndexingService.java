@@ -7,4 +7,6 @@ import java.nio.file.Path;
 public interface DocumentIndexingService {
 
     void index(Document document, Path filePath);
+
+    void removeByDocumentId(Long documentId);
 }

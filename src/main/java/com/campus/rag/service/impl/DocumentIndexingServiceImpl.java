@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+import static dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey;
+
 @Slf4j
 @Service
 public class DocumentIndexingServiceImpl implements DocumentIndexingService {
@@ -53,6 +55,16 @@ public class DocumentIndexingServiceImpl implements DocumentIndexingService {
         embeddingStore.addAll(embeddings, chunks);
         log.info("[文档索引] [文档ID={}] 向量化完成，向量维度: {}，已写入 EmbeddingStore",
                 document.getId(), embeddings.isEmpty() ? 0 : embeddings.get(0).vector().length);
+    }
+
+    @Override
+    public void removeByDocumentId(Long documentId) {
+        if (documentId == null) {
+            return;
+        }
+
+        embeddingStore.removeAll(metadataKey("documentId").isEqualTo(String.valueOf(documentId)));
+        log.info("[文档索引] [文档ID={}] 已从 EmbeddingStore 移除对应切片", documentId);
     }
 
     private dev.langchain4j.data.document.Document parseDocument(Path filePath) {

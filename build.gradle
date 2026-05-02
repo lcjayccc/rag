@@ -56,5 +56,29 @@ dependencies {
 }
 
 tasks.named('test') {
+    // 使用 JUnit Platform 运行 JUnit 5 测试。
+    // 项目里的单元测试基于 JUnit Jupiter，这一项是必须的。
     useJUnitPlatform()
+
+    // 限制测试 JVM 并发数量。
+    // 目的：避免 Gradle 同时启动多个 Test Executor，减少 Windows 本地环境下 worker 进程异常和日志交错。
+    maxParallelForks = 1
+
+    // 控制测试 JVM 的最大堆内存。
+    // 目的：当前测试不需要大内存，限制内存可以让 Codex/IDEA 的测试运行更可控。
+    jvmArgs '-Xmx256m'
+
+    testLogging {
+        // 输出通过、跳过、失败三类事件。
+        // 目的：我后续分析测试报告时能直接看到哪些测试通过、哪些测试失败。
+        events "passed", "skipped", "failed"
+
+        // 失败时输出完整异常堆栈。
+        // 目的：如果测试失败，可以直接定位断言失败、Spring 启动失败或依赖问题。
+        exceptionFormat "full"
+
+        // 不默认打印测试里的标准输出。
+        // 目的：保持测试日志简洁，避免正常 println 或框架日志淹没真正的失败信息。
+        showStandardStreams = false
+    }
 }

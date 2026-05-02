@@ -187,6 +187,7 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         documentMapper.deleteById(id);
+        documentIndexingService.removeByDocumentId(id);
 
         String filePath = document.getFilePath();
         if (filePath == null || filePath.isBlank()) {

@@ -46,6 +46,10 @@ class KnowledgeWarmupServiceTest {
         public void index(Document document, Path filePath) {
             indexedDocuments.add(document);
         }
+
+        @Override
+        public void removeByDocumentId(Long documentId) {
+        }
     }
 
     private static class FakeDocumentMapper implements DocumentMapper {
