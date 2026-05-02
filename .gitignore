@@ -38,6 +38,7 @@ out/
 
 ### Local AI tooling ###
 .codex/
+.gradle-codex/
 
 ### Local secrets ###
 src/main/resources/application-local.properties
