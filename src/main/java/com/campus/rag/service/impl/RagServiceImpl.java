@@ -6,6 +6,7 @@ import com.campus.rag.service.RagService;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
+import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.store.embedding.EmbeddingMatch;
 import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
@@ -31,18 +32,26 @@ import static dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metad
 public class RagServiceImpl implements RagService {
 
     private static final int TOP_K = 3;
-    private static final double MIN_SCORE = 0.6;
 
     private final EmbeddingStore<TextSegment> embeddingStore;
     private final EmbeddingModel embeddingModel;
+    private final ChatLanguageModel chatLanguageModel;
 
-    // 动态读取外部 .st 模板
+    @Value("${rag.retrieval.min-score:0.75}")
+    private double minScore;
+
     @Value("classpath:prompts/answer-chat-kb.st")
     private Resource promptTemplateResource;
 
-    public RagServiceImpl(EmbeddingStore<TextSegment> embeddingStore, EmbeddingModel embeddingModel) {
+    @Value("classpath:prompts/query-rewrite.st")
+    private Resource rewritePromptResource;
+
+    public RagServiceImpl(EmbeddingStore<TextSegment> embeddingStore,
+                          EmbeddingModel embeddingModel,
+                          ChatLanguageModel chatLanguageModel) {
         this.embeddingStore = embeddingStore;
         this.embeddingModel = embeddingModel;
+        this.chatLanguageModel = chatLanguageModel;
     }
 
     @Override
@@ -58,7 +67,7 @@ public class RagServiceImpl implements RagService {
             var searchBuilder = EmbeddingSearchRequest.builder()
                     .queryEmbedding(questionEmbedding)
                     .maxResults(TOP_K)
-                    .minScore(MIN_SCORE);
+                    .minScore(minScore);
 
             if (categoryId != null) {
                 searchBuilder.filter(metadataKey("categoryId").isEqualTo(String.valueOf(categoryId)));
@@ -71,10 +80,8 @@ public class RagServiceImpl implements RagService {
 
             log.info("【RAG 检索大脑】命中强相关知识碎片数量: {}", matches.size());
 
-            // 3. 提取碎片文本并拼接
-            String context = matches.stream()
-                    .map(match -> match.embedded().text())
-                    .collect(Collectors.joining("\n\n---\n\n"));
+            // 3. 提取碎片文本并拼接，注入段落来源标签。
+            String context = buildContextWithCitations(matches);
 
             if (context.isEmpty()) {
                 context = "暂无相关校园文档知识。";
@@ -89,6 +96,7 @@ public class RagServiceImpl implements RagService {
             variables.put("context", context);
             variables.put("question", userMessage);
             variables.put("sourceNames", sourceNames(matches));
+            variables.put("citationIndex", buildCitationIndex(matches));
 
             RagPromptResult result = new RagPromptResult();
             result.setPrompt(promptTemplate.apply(variables).text());
@@ -96,9 +104,10 @@ public class RagServiceImpl implements RagService {
             result.setTopScore(matches.stream().map(EmbeddingMatch::score).findFirst().orElse(null));
             result.setRagHit(!matches.isEmpty());
             result.setRejected(matches.isEmpty());
-            result.setMinScoreUsed(MIN_SCORE);
+            result.setMinScoreUsed(minScore);
             result.setRetrievalLatencyMs(System.currentTimeMillis() - startTime);
             result.setSources(toSources(matches));
+            result.setCitationIndex(buildCitationIndex(matches));
             return result;
 
         } catch (Exception e) {
@@ -111,7 +120,7 @@ public class RagServiceImpl implements RagService {
             result.setRetrievedCount(0);
             result.setRagHit(false);
             result.setRejected(true);
-            result.setMinScoreUsed(MIN_SCORE);
+            result.setMinScoreUsed(minScore);
             result.setRetrievalLatencyMs(System.currentTimeMillis() - startTime);
             return result;
         }
@@ -137,6 +146,64 @@ public class RagServiceImpl implements RagService {
                 .filter(name -> name != null && !name.isBlank())
                 .distinct()
                 .collect(Collectors.joining("、"));
+    }
+
+    private String buildContextWithCitations(List<EmbeddingMatch<TextSegment>> matches) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < matches.size(); i++) {
+            EmbeddingMatch<TextSegment> match = matches.get(i);
+            Metadata meta = match.embedded().metadata();
+            String fileName = meta.getString("fileName") != null ? meta.getString("fileName") : "未知文档";
+            String chunkIdx = meta.getString("chunkIndex") != null ? meta.getString("chunkIndex") : "?";
+            sb.append("[来源").append(i + 1).append("：")
+              .append(fileName).append("-段落").append(chunkIdx).append("]\n");
+            sb.append(match.embedded().text());
+            if (i < matches.size() - 1) {
+                sb.append("\n\n---\n\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private String buildCitationIndex(List<EmbeddingMatch<TextSegment>> matches) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < matches.size(); i++) {
+            Metadata meta = matches.get(i).embedded().metadata();
+            String fileName = meta.getString("fileName") != null ? meta.getString("fileName") : "未知文档";
+            String chunkIdx = meta.getString("chunkIndex") != null ? meta.getString("chunkIndex") : "?";
+            sb.append("  [").append(i + 1).append("] ")
+              .append(fileName).append("（段落").append(chunkIdx).append("）\n");
+        }
+        return sb.toString();
+    }
+
+    @Override
+    public String rewriteQuery(String question, String history) {
+        if (history == null || history.isBlank()) {
+            return question;
+        }
+        try {
+            String templateContent = rewritePromptResource.getContentAsString(StandardCharsets.UTF_8);
+            PromptTemplate promptTemplate = PromptTemplate.from(templateContent);
+
+            Map<String, Object> variables = new HashMap<>();
+            variables.put("history", history);
+            variables.put("question", question);
+
+            String rewritePrompt = promptTemplate.apply(variables).text();
+            String rewritten = chatLanguageModel.generate(rewritePrompt).trim();
+
+            if (rewritten.isBlank() || rewritten.length() > question.length() * 3) {
+                log.warn("Query Rewrite 结果异常，回退到原始问题: \"{}\"", question);
+                return question;
+            }
+
+            log.info("Query Rewrite: \"{}\" → \"{}\"", question, rewritten);
+            return rewritten;
+        } catch (Exception e) {
+            log.warn("Query Rewrite 失败，回退到原始问题: \"{}\"", question, e);
+            return question;
+        }
     }
 
     private Long parseLong(String value) {

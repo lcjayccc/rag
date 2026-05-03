@@ -6,6 +6,7 @@ import com.campus.rag.dto.RagPromptResult;
 import com.campus.rag.service.AiChatService;
 import com.campus.rag.service.RagQueryLogService;
 import com.campus.rag.service.RagService;
+import com.campus.rag.service.SessionHistoryService;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,16 +29,19 @@ public class AiChatServiceImpl implements AiChatService {
     private final StreamingChatLanguageModel streamingChatLanguageModel;
     private final RagService ragService; // 【新增注入】
     private final RagQueryLogService ragQueryLogService;
+    private final SessionHistoryService sessionHistoryService;
 
     // 构造器注入两个模型
     public AiChatServiceImpl(ChatLanguageModel chatLanguageModel,
                              StreamingChatLanguageModel streamingChatLanguageModel,
                              RagService ragService,
-                             RagQueryLogService ragQueryLogService) {
+                             RagQueryLogService ragQueryLogService,
+                             SessionHistoryService sessionHistoryService) {
         this.chatLanguageModel = chatLanguageModel;
         this.streamingChatLanguageModel = streamingChatLanguageModel;//新增流式模型
         this.ragService = ragService;
         this.ragQueryLogService = ragQueryLogService;
+        this.sessionHistoryService = sessionHistoryService;
     }
 
     //同步聊天方式
@@ -48,16 +52,23 @@ public class AiChatServiceImpl implements AiChatService {
     }
     // 新增 完整的流式输出处理逻辑
     @Override
-    public SseEmitter streamChatWithAi(String userMessage, Long categoryId) {
+    public SseEmitter streamChatWithAi(String userMessage, Long categoryId, String sessionId) {
         AuthPrincipal principal = AuthContext.requireLogin();
         long requestStart = System.currentTimeMillis();
         // 【Step 8】: 将超时时间设为 0L（永不超时），防止长回答被 Spring Boot 强行截断
         SseEmitter emitter = new SseEmitter(0L);
 
+        // 多轮对话 Query Rewrite：用历史上下文将追问改写成完整问题。
+        String history = sessionHistoryService.getHistory(sessionId);
+        String searchQuery = ragService.rewriteQuery(userMessage, history);
+
         // 【Step 7】: 调用 RAG 大脑，把简短的用户问题变成带有上下文的开卷超级 Prompt
         // categoryId 为空表示全库检索；不为空时 RagService 会按切片元数据过滤分类范围。
-        RagPromptResult ragResult = ragService.buildRagPrompt(userMessage, categoryId);
+        RagPromptResult ragResult = ragService.buildRagPrompt(searchQuery, categoryId);
         log.info("【流式对话】开卷考试试卷已下发大模型，准备生成回答...");
+
+        // 用于存储 AI 完整回答文本，写入会话历史。
+        StringBuilder fullAnswer = new StringBuilder();
 
         // 将包装好的超级 Prompt 喂给千问
         streamingChatLanguageModel.generate(ragResult.getPrompt(), new StreamingResponseHandler<>() {
@@ -65,6 +76,7 @@ public class AiChatServiceImpl implements AiChatService {
             @Override
             public void onNext(String token) {
                 try {
+                    fullAnswer.append(token);
                     emitter.send(token);
                 } catch (Exception e) {
                     // 【优化 2】：前端主动断开连接（如关闭网页），静默关闭即可，不惊动全局异常处理
@@ -87,6 +99,7 @@ public class AiChatServiceImpl implements AiChatService {
                             ragResult,
                             System.currentTimeMillis() - requestStart
                     );
+                    sessionHistoryService.addTurn(sessionId, userMessage, fullAnswer.toString());
                 }
                 emitter.complete();
             }
@@ -115,6 +128,7 @@ public class AiChatServiceImpl implements AiChatService {
                             ragResult,
                             System.currentTimeMillis() - requestStart
                     );
+                    sessionHistoryService.addTurn(sessionId, userMessage, fullAnswer.toString());
                 }
 
                 // 【优化 1】：既然已经优雅通知前端并 [DONE]，这里正常关闭即可，避免触发 Spring 的 Response committed 异常

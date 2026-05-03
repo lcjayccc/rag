@@ -30,6 +30,8 @@ public class RagPromptResult {
 
     private List<RagSource> sources = List.of();
 
+    private String citationIndex;
+
     public String sourceDocumentIdsJson() {
         String ids = sources.stream()
                 .map(RagSource::getDocumentId)
@@ -49,10 +51,10 @@ public class RagPromptResult {
     }
 
     public String citationMarkdown() {
-        String sourceNames = sourceNamesText();
-        if (sourceNames.isBlank()) {
+        String idx = getCitationIndex();
+        if (idx == null || idx.isBlank()) {
             return "";
         }
-        return "\n\n> 参考来源：" + sourceNames;
+        return "\n\n> 参考文献：\n" + idx;
     }
 }

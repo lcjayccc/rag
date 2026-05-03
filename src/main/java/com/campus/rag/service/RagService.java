@@ -22,4 +22,19 @@ public interface RagService {
      * @return Prompt、召回数量、相似度和来源文档
      */
     RagPromptResult buildRagPrompt(String userMessage, Long categoryId);
+
+    /**
+     * 基于历史对话上下文，将多轮追问改写为独立完整问题。
+     * Rewrite 失败时回退到原始问题，不影响主链路。
+     *
+     * @param question 用户当前提问
+     * @param history  会话历史文本（可为空字符串）
+     * @return 改写后的完整问题
+     */
+    default String rewriteQuery(String question, String history) {
+        if (history == null || history.isBlank()) {
+            return question;
+        }
+        return question;
+    }
 }

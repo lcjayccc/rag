@@ -22,7 +22,7 @@ public interface AiChatService {
      * @return SSE 推送通道
      */
     default SseEmitter streamChatWithAi(String userMessage) {
-        return streamChatWithAi(userMessage, null);
+        return streamChatWithAi(userMessage, null, null);
     }
 
     /**
@@ -32,5 +32,17 @@ public interface AiChatService {
      * @param categoryId  知识库分类 ID，为空表示全库检索
      * @return SSE 推送通道
      */
-    SseEmitter streamChatWithAi(String userMessage, Long categoryId);
+    default SseEmitter streamChatWithAi(String userMessage, Long categoryId) {
+        return streamChatWithAi(userMessage, categoryId, null);
+    }
+
+    /**
+     * 流式问答方法，支持分类检索和多轮对话 Query Rewrite。
+     *
+     * @param userMessage 用户原始问题
+     * @param categoryId  知识库分类 ID，为空表示全库检索
+     * @param sessionId   会话 ID，用于 Query Rewrite，为空表示单轮问答
+     * @return SSE 推送通道
+     */
+    SseEmitter streamChatWithAi(String userMessage, Long categoryId, String sessionId);
 }

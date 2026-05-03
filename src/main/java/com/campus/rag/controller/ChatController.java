@@ -35,9 +35,11 @@ public class ChatController {
     }
 
     // 流式问答接口：categoryId 为空时全库检索，不为空时只检索指定分类。
+    // sessionId 用于多轮对话 Query Rewrite，为空时按单轮处理。
     @GetMapping(value = "/stream", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter streamChat(@RequestParam String message,
-                                 @RequestParam(required = false) Long categoryId) {
-        return aiChatService.streamChatWithAi(message, categoryId);
+                                 @RequestParam(required = false) Long categoryId,
+                                 @RequestParam(required = false) String sessionId) {
+        return aiChatService.streamChatWithAi(message, categoryId, sessionId);
     }
 }
