@@ -1,6 +1,6 @@
 # Campus RAG 架构路线图
 
-更新时间：2026-05-03
+更新时间：2026-05-04
 
 ## 1. 项目定位
 
@@ -41,7 +41,7 @@ Campus RAG 是一个面向河南工业大学校园资料的智能问答系统。
 | 登录鉴权 | 真实登录 + `ADMIN/USER` | 已完成 |
 | 查询日志 | `rag_query_log` | 基础写入已完成 |
 | 引用溯源 | 来源文档标注 | 已完成基础展示 |
-| 分类知识库 | `document_category` + 范围检索 | 前后端代码已接入，待联调验证 |
+| 分类知识库 | `document_category` + 范围检索 | 已完成，分类检索隔离联调通过 |
 | 向量持久化 | Chroma | 后续评估 |
 | OCR | 图片/扫描件文本识别 | 后续独立阶段 |
 
@@ -208,7 +208,7 @@ Campus RAG 是一个面向河南工业大学校园资料的智能问答系统。
 
 ## 8. 第六阶段：RAG 检索质量深度优化
 
-状态：下一阶段最高优先级。
+状态：第一轮已完成，当前进入联调验证和回归数据集建设。
 
 启动条件：分类知识库已完成并稳定。
 
@@ -229,6 +229,7 @@ Campus RAG 是一个面向河南工业大学校园资料的智能问答系统。
 
 ### 8.2 Chunk 级精准溯源
 
+- 状态：已完成，待继续通过浏览器问答场景验证真实 UX。
 - 当前问题：引用溯源仅在回答末尾拼接来源文档名，无法定位到具体段落或句子，论文可解释性论证支撑不足。
 - 优化策略：在 Prompt 的 Context 组装阶段，为每条召回切片注入段落来源标签（如 `[来源：文档名-段落N]`），要求 LLM 在生成回答时携带论文角标样式的行内引用（如 `[1]`、`[2]`）。
 - 最终效果：用户可逐句追溯到具体文档的具体段落。
@@ -236,10 +237,40 @@ Campus RAG 是一个面向河南工业大学校园资料的智能问答系统。
 
 ### 8.3 基于 Session 的 Query Rewrite
 
+- 状态：已完成最小可验证版本，待继续通过多轮追问场景验证召回效果。
 - 当前问题：单轮向量检索无法理解"这两个"、"为什么"等依赖上文的代词和省略，导致多轮追问场景召回率下降。
 - 优化策略：引入 `session_id`，在多轮对话中保留历史问答；在向量化检索前，使用轻量小模型将用户当前问题与历史上下文合并，重写为完整独立问题。
 - 原则：最小可验证版本优先，不引入完整对话管理系统；Query Rewrite 失败时回退到原始问题，不影响主链路。
 - 实施位置：`RagServiceImpl.java`（检索前增加 Rewrite 环节）、新增 Rewrite Prompt 模板。
+
+### 8.4 当前测试基线
+
+- Gradle 命令行测试环境已恢复，旧 `Unable to load class ...` 问题不再复现。
+- 推荐 PowerShell 环境：
+
+```powershell
+$env:GRADLE_USER_HOME='E:\Learn\javaEE\Gradle-8.9\caches'
+$env:JAVA_HOME='E:\JAVAJDK\jdk-21'
+$env:Path="$env:JAVA_HOME\bin;$env:Path"
+```
+
+- 推荐编译验证：
+
+```powershell
+.\gradlew.bat --no-daemon --max-workers=1 clean testClasses --console=plain --stacktrace
+```
+
+- 推荐全量测试：
+
+```powershell
+.\gradlew.bat --no-daemon --max-workers=1 test --console=plain --stacktrace
+```
+
+- 最新验证结果：
+  - `clean testClasses`：BUILD SUCCESSFUL。
+  - 历史类加载失败的 4 个重点测试类全部通过。
+  - 全量后端测试 22/22 通过。
+  - `RagPromptResult.citationMarkdown()` 已兼容新旧引用格式。
 
 ## 9. 后续基础设施评估
 
@@ -275,7 +306,7 @@ OCR 应作为独立链路设计，不混入普通 PDF / Office 解析逻辑。
 - 分布式锁
 - Redis 会话体系
 - Chroma / Milvus
-- Rerank、Query Rewrite、Intent Classifier
+- Rerank、Intent Classifier
 - 复杂权限框架
 
 除非当前阶段有明确验收需求，否则不新增基础设施。
@@ -331,6 +362,7 @@ src/main/resources/prompts/
 
 ## 10. 当前最近任务
 
-1. 在 MySQL 应用 `document_category` 和 `document.category_id` 迁移 SQL。
-2. 启动前后端，验证分类上传、分类展示和分类范围问答。
-3. 验证同一问题在全库和具体分类下的召回结果差异。
+1. 扩充知识库文档数量，优先补充稳定可引用的校园制度、通知、表格和 FAQ。
+2. 浏览器联调验证 Chunk 行内角标溯源和 Query Rewrite 实际效果。
+3. 整理 RAG 问答效果回归数据集，覆盖命中、拒答、日期、流式完成和分类范围检索。
+4. 提交前运行 `clean testClasses` 和全量 `test`，保持 22/22 后端测试通过基线。

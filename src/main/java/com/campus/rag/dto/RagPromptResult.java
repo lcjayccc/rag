@@ -52,9 +52,14 @@ public class RagPromptResult {
 
     public String citationMarkdown() {
         String idx = getCitationIndex();
-        if (idx == null || idx.isBlank()) {
-            return "";
+        if (idx != null && !idx.isBlank()) {
+            return "\n\n> 参考文献：\n" + idx;
         }
-        return "\n\n> 参考文献：\n" + idx;
+
+        String sourceNames = sourceNamesText();
+        if (!sourceNames.isBlank()) {
+            return "\n\n> 参考来源：" + sourceNames;
+        }
+        return "";
     }
 }

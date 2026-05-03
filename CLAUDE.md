@@ -1,24 +1,19 @@
-# Campus RAG 后端兼容入口
+# Campus RAG 后端 Claude 自动入口
 
-本文件仅保留给会默认读取 `CLAUDE.md` 的工具。后端正式架构上下文以 `ARCHITECTURE_ROADMAP.md` 为准。
+本文件只作为 Claude Code 的自动入口，不维护独立事实源，避免与 `AGENTS.md` 信息漂移。
 
-开发前请先确认：
+请按顺序读取：
 
-1. 读取根目录 `AGENTS.md`、`PROJECT_SUMMARY.md`、`DEV_LOG.md`。
-2. 读取本仓库 `ARCHITECTURE_ROADMAP.md`。
-3. 执行 `git status --short --branch`，确认当前后端改动范围。
+1. `AGENTS.md`：后端事实源、边界和后端 Agent 启动 Prompt。
+2. `ARCHITECTURE_ROADMAP.md`：后端架构路线、RAG 优化策略和测试基线。
+3. 父目录 `../AGENTS.md`。
+4. 父目录 `../PROJECT_SUMMARY.md`。
+5. 父目录 `../DEV_LOG.md`。
 
-当前后端状态：
+然后执行：
 
-- RAG MVP 主链路已完成。
-- PDF / Word / Excel / PPT 文档摄入已完成。
-- `InMemoryEmbeddingStore + KnowledgeWarmupService` 启动预热已完成。
-- 删除文档时同步清理内存向量切片已完成并推送。
-- 当前阶段进入最小角色管理：`ADMIN` 管理知识库，`USER` 使用问答。
+```powershell
+git status --short --branch
+```
 
-后端约束：
-
-- Prompt 必须外置到 `src/main/resources/prompts/`。
-- `file_type` 只保存短扩展名，例如 `pdf`、`docx`、`xlsx`、`pptx`。
-- 当前不要提前引入 Redis、Chroma、OCR、Rerank、Query Rewrite。
-- 新增或修改数据库字段时必须同步 Entity、Mapper interface、Mapper XML 和相关 SQL。
+未拿到 Claude Code 父目录主控任务卡前，不要修改代码、不要提交、不要推送。
