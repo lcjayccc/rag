@@ -1,6 +1,10 @@
 package com.campus.rag.service.impl;
 
+import com.campus.rag.auth.AuthContext;
+import com.campus.rag.auth.AuthPrincipal;
+import com.campus.rag.dto.RagPromptResult;
 import com.campus.rag.service.AiChatService;
+import com.campus.rag.service.RagQueryLogService;
 import com.campus.rag.service.RagService;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import lombok.extern.slf4j.Slf4j;
@@ -23,12 +27,17 @@ public class AiChatServiceImpl implements AiChatService {
     // 新增：LangChain4j 自动装配的流式模型
     private final StreamingChatLanguageModel streamingChatLanguageModel;
     private final RagService ragService; // 【新增注入】
+    private final RagQueryLogService ragQueryLogService;
 
     // 构造器注入两个模型
-    public AiChatServiceImpl(ChatLanguageModel chatLanguageModel, StreamingChatLanguageModel streamingChatLanguageModel, RagService ragService) {
+    public AiChatServiceImpl(ChatLanguageModel chatLanguageModel,
+                             StreamingChatLanguageModel streamingChatLanguageModel,
+                             RagService ragService,
+                             RagQueryLogService ragQueryLogService) {
         this.chatLanguageModel = chatLanguageModel;
         this.streamingChatLanguageModel = streamingChatLanguageModel;//新增流式模型
         this.ragService = ragService;
+        this.ragQueryLogService = ragQueryLogService;
     }
 
     //同步聊天方式
@@ -40,15 +49,17 @@ public class AiChatServiceImpl implements AiChatService {
     // 新增 完整的流式输出处理逻辑
     @Override
     public SseEmitter streamChatWithAi(String userMessage) {
+        AuthPrincipal principal = AuthContext.requireLogin();
+        long requestStart = System.currentTimeMillis();
         // 【Step 8】: 将超时时间设为 0L（永不超时），防止长回答被 Spring Boot 强行截断
         SseEmitter emitter = new SseEmitter(0L);
 
         // 【Step 7】: 调用 RAG 大脑，把简短的用户问题变成带有上下文的开卷超级 Prompt
-        String augmentedPrompt = ragService.buildRagPrompt(userMessage);
+        RagPromptResult ragResult = ragService.buildRagPrompt(userMessage);
         log.info("【流式对话】开卷考试试卷已下发大模型，准备生成回答...");
 
         // 将包装好的超级 Prompt 喂给千问
-        streamingChatLanguageModel.generate(augmentedPrompt, new StreamingResponseHandler<>() {
+        streamingChatLanguageModel.generate(ragResult.getPrompt(), new StreamingResponseHandler<>() {
 
             @Override
             public void onNext(String token) {
@@ -63,10 +74,18 @@ public class AiChatServiceImpl implements AiChatService {
             @Override
             public void onComplete(Response<AiMessage> response) {
                 try {
+                    sendCitationIfPresent(emitter, ragResult);
                     // AI 回答完毕，主动向前端发送 [DONE] 信号
                     emitter.send("[DONE]");
                 } catch (Exception e) {
                     log.debug("发送 [DONE] 信号时前端已断开");
+                } finally {
+                    ragQueryLogService.record(
+                            principal.getUserId(),
+                            userMessage,
+                            ragResult,
+                            System.currentTimeMillis() - requestStart
+                    );
                 }
                 emitter.complete();
             }
@@ -88,6 +107,13 @@ public class AiChatServiceImpl implements AiChatService {
                     emitter.send("[DONE]");
                 } catch (Exception e) {
                     // 此时前端可能已断开，忽略发送失败
+                } finally {
+                    ragQueryLogService.record(
+                            principal.getUserId(),
+                            userMessage,
+                            ragResult,
+                            System.currentTimeMillis() - requestStart
+                    );
                 }
 
                 // 【优化 1】：既然已经优雅通知前端并 [DONE]，这里正常关闭即可，避免触发 Spring 的 Response committed 异常
@@ -97,5 +123,12 @@ public class AiChatServiceImpl implements AiChatService {
 
         // 3. 建立通道后立刻返回 emitter 给 Controller
         return emitter;
+    }
+
+    private void sendCitationIfPresent(SseEmitter emitter, RagPromptResult ragResult) throws IOException {
+        String citation = ragResult.citationMarkdown();
+        if (!citation.isBlank()) {
+            emitter.send(citation);
+        }
     }
 }

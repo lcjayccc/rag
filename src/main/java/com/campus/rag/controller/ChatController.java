@@ -1,5 +1,6 @@
 package com.campus.rag.controller;
 
+import com.campus.rag.auth.AuthContext;
 import com.campus.rag.service.AiChatService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,6 +29,7 @@ public class ChatController {
      */
     @GetMapping("/simple")
     public String simpleChat(@RequestParam String message) {
+        AuthContext.requireLogin();
         // 调用 Service 层向大模型提问，并返回结果给调用方
         return aiChatService.chatWithAi(message);
     }

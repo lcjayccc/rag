@@ -1,6 +1,9 @@
 package com.campus.rag.service.impl;
 
+import com.campus.rag.dto.RagPromptResult;
+import com.campus.rag.dto.RagSource;
 import com.campus.rag.service.RagService;
+import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -25,6 +28,9 @@ import java.util.stream.Collectors;
 @Service
 public class RagServiceImpl implements RagService {
 
+    private static final int TOP_K = 3;
+    private static final double MIN_SCORE = 0.6;
+
     private final EmbeddingStore<TextSegment> embeddingStore;
     private final EmbeddingModel embeddingModel;
 
@@ -38,8 +44,9 @@ public class RagServiceImpl implements RagService {
     }
 
     @Override
-    public String buildRagPrompt(String userMessage) {
+    public RagPromptResult buildRagPrompt(String userMessage) {
         log.info("【RAG 检索大脑】开始为问题寻找答案: \"{}\"", userMessage);
+        long startTime = System.currentTimeMillis();
 
         try {
             // 1. 问题向量化
@@ -48,8 +55,8 @@ public class RagServiceImpl implements RagService {
             // 2. 内存向量库 Top-3 检索，minScore 过滤低相关度垃圾信息
             EmbeddingSearchRequest searchRequest = EmbeddingSearchRequest.builder()
                     .queryEmbedding(questionEmbedding)
-                    .maxResults(3)
-                    .minScore(0.6)
+                    .maxResults(TOP_K)
+                    .minScore(MIN_SCORE)
                     .build();
 
             EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(searchRequest);
@@ -74,13 +81,68 @@ public class RagServiceImpl implements RagService {
             variables.put("currentDate", LocalDate.now().toString()); // 注入当前时间，解决千问知识截断幻觉
             variables.put("context", context);
             variables.put("question", userMessage);
+            variables.put("sourceNames", sourceNames(matches));
 
-            return promptTemplate.apply(variables).text();
+            RagPromptResult result = new RagPromptResult();
+            result.setPrompt(promptTemplate.apply(variables).text());
+            result.setRetrievedCount(matches.size());
+            result.setTopScore(matches.stream().map(EmbeddingMatch::score).findFirst().orElse(null));
+            result.setRagHit(!matches.isEmpty());
+            result.setRejected(matches.isEmpty());
+            result.setMinScoreUsed(MIN_SCORE);
+            result.setRetrievalLatencyMs(System.currentTimeMillis() - startTime);
+            result.setSources(toSources(matches));
+            return result;
 
         } catch (Exception e) {
             log.error("RAG 检索与组装 Prompt 失败", e);
-            // 降级策略：如果 RAG 报错，直接返回原问题，保证系统不崩溃
-            return userMessage;
+            // 降级策略：如果 RAG 报错，直接返回原问题，保证系统不崩溃，同时保留一次拒答型日志数据。
+            RagPromptResult result = new RagPromptResult();
+            result.setPrompt("你是河南工业大学的校园智能助手。知识库检索暂时不可用，请不要编造答案。"
+                    + "请直接回答：抱歉，我的知识库中暂时没有查到相关信息，建议您联系学校相关部门确认。"
+                    + "\n\n用户问题：" + userMessage);
+            result.setRetrievedCount(0);
+            result.setRagHit(false);
+            result.setRejected(true);
+            result.setMinScoreUsed(MIN_SCORE);
+            result.setRetrievalLatencyMs(System.currentTimeMillis() - startTime);
+            return result;
         }
+    }
+
+    private List<RagSource> toSources(List<EmbeddingMatch<TextSegment>> matches) {
+        return matches.stream()
+                .map(match -> {
+                    Metadata metadata = match.embedded().metadata();
+                    return new RagSource(
+                            parseLong(metadata.getString("documentId")),
+                            metadata.getString("fileName"),
+                            parseInteger(metadata.getString("chunkIndex")),
+                            match.score()
+                    );
+                })
+                .toList();
+    }
+
+    private String sourceNames(List<EmbeddingMatch<TextSegment>> matches) {
+        return toSources(matches).stream()
+                .map(RagSource::getFileName)
+                .filter(name -> name != null && !name.isBlank())
+                .distinct()
+                .collect(Collectors.joining("、"));
+    }
+
+    private Long parseLong(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return Long.valueOf(value);
+    }
+
+    private Integer parseInteger(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return Integer.valueOf(value);
     }
 }

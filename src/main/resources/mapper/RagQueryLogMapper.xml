@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.rag.mapper.RagQueryLogMapper">
+
+    <resultMap id="BaseResultMap" type="com.campus.rag.entity.RagQueryLog">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="question" property="question"/>
+        <result column="retrieved_count" property="retrievedCount"/>
+        <result column="top_score" property="topScore"/>
+        <result column="is_rag_hit" property="ragHit"/>
+        <result column="is_rejected" property="rejected"/>
+        <result column="doc_ids_hit" property="docIdsHit"/>
+        <result column="min_score_used" property="minScoreUsed"/>
+        <result column="latency_ms" property="latencyMs"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO rag_query_log
+        (user_id, question, retrieved_count, top_score, is_rag_hit, is_rejected,
+         doc_ids_hit, min_score_used, latency_ms, create_time)
+        VALUES
+        (#{userId}, #{question}, #{retrievedCount}, #{topScore}, #{ragHit}, #{rejected},
+         #{docIdsHit}, #{minScoreUsed}, #{latencyMs}, #{createTime})
+    </insert>
+</mapper>
