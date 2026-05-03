@@ -214,12 +214,18 @@ Campus RAG 是一个面向河南工业大学校园资料的智能问答系统。
 
 目标：降低垃圾召回、改善多轮追问、提升引用可解释性，让系统从"能答"升级为"答得准、可追溯"。
 
-### 8.1 动态上调检索阈值（minScore）
+### 8.1 检索阈值校准（minScore）
 
-- 当前问题：`minScore=0.6` 阈值偏低，低质量碎片可能混入上下文，导致大模型回答偏离知识库事实。
-- 优化策略：将 `RagService` 的 `minScore` 从 `0.6` 上调至 `0.75`。
-- 原则：宁可触发兜底拒答（"暂无相关信息"），也不让低质量碎片污染 LLM 上下文。
-- 实施位置：`RagServiceImpl.java` 中 `minScore` 常量或可配置参数。
+- 状态：已完成，经数据分析校准为 `0.65`。
+- 数据依据：`rag_query_log` 表 23 条记录分析：
+  - DashScope `text-embedding-v2` 对中文校园文档的最高相似度 = **0.747**（记录 #12）。
+  - 平均 topScore ≈ 0.697（minScore=0.6 的 14 条记录）。
+  - minScore=0.75 导致命中率 0%（8 条记录全部拒答）。
+  - minScore=0.65 命中率恢复至 100%（验证记录 #23, topScore=0.739）。
+- 当前配置：`rag.retrieval.min-score` 默认 `0.65`，可通过 `application-local.properties` 覆盖。
+- 原则：过滤 <0.65 的低质碎片（原始 0.6 阈值中约 20% 的弱召回），保留 ≥0.65 的有效语义匹配。
+- 注意事项：如果切换到 `text-embedding-v3` 或调整 chunk 策略，需重新校准阈值。
+- 实施位置：`RagServiceImpl.java` `@Value("${rag.retrieval.min-score:0.65}")`。
 
 ### 8.2 Chunk 级精准溯源
 
