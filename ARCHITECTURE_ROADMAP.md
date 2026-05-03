@@ -179,34 +179,63 @@ Campus RAG 是一个面向河南工业大学校园资料的智能问答系统。
 
 ## 7. 第五阶段：分类知识库
 
+状态：已完成（分类检索隔离联调验证通过）。
+
 启动条件：角色管理、查询日志和引用溯源稳定。
 
-目标：让知识库从“全局资料池”升级为“按校园业务范围检索”。
+目标：让知识库从”全局资料池”升级为”按校园业务范围检索”。
 
-推荐能力：
+已完成范围：
 
-- 新增 `document_category` 表。
-- 上传文档时选择分类，如教务处、学生工作处、校级规章制度、招就处、其他。
-- 文档切片元数据写入 `categoryId`。
-- 问答时支持选择“全库”或某个分类范围。
-- `RagService` 根据分类做 MetadataFilter。
+### 后端
 
-当前已完成的后端基础：
+1. 新增 `document_category` 建表脚本（`docs/sql/2026-05-03-document-category.sql`）和默认分类初始化数据。
+2. 新增分类实体 `DocumentCategory.java`、Mapper `DocumentCategoryMapper.java`、Service `DocumentCategoryService.java` 和管理接口 `DocumentCategoryController.java`。
+3. 文档上传接口支持可选 `categoryId`，`document` 表新增 `category_id` 列。
+4. `DocumentIndexingServiceImpl` 在切片元数据中写入 `categoryId`。
+5. `RagServiceImpl` 支持可选 `categoryId`，通过 `MetadataFilter` 限制向量召回范围。
+6. `ChatController` 的 SSE 接口已支持可选 `categoryId` 参数，兼容全库和分类检索两种问答范围。
 
-1. 新增 `document_category` 建表脚本和默认分类初始化数据。
-2. 新增分类实体、Mapper、Service 和管理接口。
-3. 文档上传接口支持可选 `categoryId`，`document` 表新增 `category_id`。
-4. 文档切片元数据已写入 `categoryId`。
-5. `RagService` 已支持可选 `categoryId`，通过 MetadataFilter 限制向量召回范围。
-6. `/api/chat/stream` 已支持可选 `categoryId` 参数，兼容全库和分类检索两种问答范围。
+### 前端
 
-当前已完成的前端基础：
+1. `Dashboard.vue` 可加载分类列表，上传前选择资料分类。
+2. 文档列表根据 `categoryId` 展示分类名称，并支持按分类搜索。
+3. `Chat.vue` 可选择”全库”或具体分类，并将 `categoryId` 传给 SSE 问答接口。
 
-1. 知识库控制台可加载分类列表，上传前选择资料分类。
-2. 文档列表可根据 `categoryId` 展示分类名称，并支持按分类搜索。
-3. 聊天页可选择“全库”或具体分类，并将分类范围传给 SSE 问答接口。
+### 验证结果
 
-## 8. 后续基础设施评估
+- 分类知识库端到端联调通过：控制台上传文档到指定分类后，聊天页按不同分类范围检索可实现知识隔离与精准召回。
+
+## 8. 第六阶段：RAG 检索质量深度优化
+
+状态：下一阶段最高优先级。
+
+启动条件：分类知识库已完成并稳定。
+
+目标：降低垃圾召回、改善多轮追问、提升引用可解释性，让系统从"能答"升级为"答得准、可追溯"。
+
+### 8.1 动态上调检索阈值（minScore）
+
+- 当前问题：`minScore=0.6` 阈值偏低，低质量碎片可能混入上下文，导致大模型回答偏离知识库事实。
+- 优化策略：将 `RagService` 的 `minScore` 从 `0.6` 上调至 `0.75`。
+- 原则：宁可触发兜底拒答（"暂无相关信息"），也不让低质量碎片污染 LLM 上下文。
+- 实施位置：`RagServiceImpl.java` 中 `minScore` 常量或可配置参数。
+
+### 8.2 Chunk 级精准溯源
+
+- 当前问题：引用溯源仅在回答末尾拼接来源文档名，无法定位到具体段落或句子，论文可解释性论证支撑不足。
+- 优化策略：在 Prompt 的 Context 组装阶段，为每条召回切片注入段落来源标签（如 `[来源：文档名-段落N]`），要求 LLM 在生成回答时携带论文角标样式的行内引用（如 `[1]`、`[2]`）。
+- 最终效果：用户可逐句追溯到具体文档的具体段落。
+- 实施位置：`prompts/answer-chat-kb.st`（Context 组装格式）和 `RagServiceImpl.java`（来源元数据注入）。
+
+### 8.3 基于 Session 的 Query Rewrite
+
+- 当前问题：单轮向量检索无法理解"这两个"、"为什么"等依赖上文的代词和省略，导致多轮追问场景召回率下降。
+- 优化策略：引入 `session_id`，在多轮对话中保留历史问答；在向量化检索前，使用轻量小模型将用户当前问题与历史上下文合并，重写为完整独立问题。
+- 原则：最小可验证版本优先，不引入完整对话管理系统；Query Rewrite 失败时回退到原始问题，不影响主链路。
+- 实施位置：`RagServiceImpl.java`（检索前增加 Rewrite 环节）、新增 Rewrite Prompt 模板。
+
+## 9. 后续基础设施评估
 
 ### Chroma 向量持久化
 
