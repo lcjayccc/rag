@@ -12,6 +12,7 @@ public class Document {
 
     private Long id;
     private Long userId;
+    private Long categoryId;
     private String fileName;
     private String filePath;
     private String fileType;

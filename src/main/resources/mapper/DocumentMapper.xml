@@ -5,6 +5,7 @@
     <resultMap id="BaseResultMap" type="com.campus.rag.entity.Document">
         <id column="id" property="id"/>
         <result column="user_id" property="userId"/>
+        <result column="category_id" property="categoryId"/>
         <result column="file_name" property="fileName"/>
         <result column="file_path" property="filePath"/>
         <result column="file_type" property="fileType"/>
@@ -14,35 +15,36 @@
     </resultMap>
 
     <select id="selectById" resultMap="BaseResultMap">
-        SELECT id, user_id, file_name, file_path, file_type, status, create_time, update_time
+        SELECT id, user_id, category_id, file_name, file_path, file_type, status, create_time, update_time
         FROM document WHERE id = #{id}
     </select>
 
     <select id="selectByUserId" resultMap="BaseResultMap">
-        SELECT id, user_id, file_name, file_path, file_type, status, create_time, update_time
+        SELECT id, user_id, category_id, file_name, file_path, file_type, status, create_time, update_time
         FROM document WHERE user_id = #{userId}
         ORDER BY update_time DESC, id DESC
     </select>
 
     <select id="selectAll" resultMap="BaseResultMap">
-        SELECT id, user_id, file_name, file_path, file_type, status, create_time, update_time
+        SELECT id, user_id, category_id, file_name, file_path, file_type, status, create_time, update_time
         FROM document
         ORDER BY update_time DESC, id DESC
     </select>
 
     <select id="selectCompleted" resultMap="BaseResultMap">
-        SELECT id, user_id, file_name, file_path, file_type, status, create_time, update_time
+        SELECT id, user_id, category_id, file_name, file_path, file_type, status, create_time, update_time
         FROM document WHERE status = 2
         ORDER BY update_time DESC, id DESC
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO document (user_id, file_name, file_path, file_type, status, create_time, update_time)
-        VALUES (#{userId}, #{fileName}, #{filePath}, #{fileType}, #{status}, #{createTime}, #{updateTime})
+        INSERT INTO document (user_id, category_id, file_name, file_path, file_type, status, create_time, update_time)
+        VALUES (#{userId}, #{categoryId}, #{fileName}, #{filePath}, #{fileType}, #{status}, #{createTime}, #{updateTime})
     </insert>
 
     <update id="updateById">
-        UPDATE document SET file_name=#{fileName}, file_path=#{filePath}, status=#{status}, update_time=#{updateTime}
+        UPDATE document
+        SET category_id=#{categoryId}, file_name=#{fileName}, file_path=#{filePath}, status=#{status}, update_time=#{updateTime}
         WHERE id = #{id}
     </update>
 

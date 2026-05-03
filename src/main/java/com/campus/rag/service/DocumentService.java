@@ -20,6 +20,18 @@ public interface DocumentService {
     Document upload(Long userId, MultipartFile file);
 
     /**
+     * 上传并解析文档，同时记录所属知识库分类。
+     *
+     * @param userId     用户 ID
+     * @param file       上传文件
+     * @param categoryId 分类 ID，可为空
+     * @return 文档实体
+     */
+    default Document upload(Long userId, MultipartFile file, Long categoryId) {
+        return upload(userId, file);
+    }
+
+    /**
      * 查询用户下的文档列表
      */
     List<Document> listByUserId(Long userId);

@@ -4,6 +4,8 @@ import com.campus.rag.entity.Document;
 import com.campus.rag.mapper.DocumentMapper;
 import com.campus.rag.service.DocumentIndexingService;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,6 +16,27 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class DocumentServiceImplTest {
+
+    @Test
+    void uploadPersistsCategoryIdForLaterMetadataFiltering() throws Exception {
+        Path uploadDir = Files.createTempDirectory("campus-rag-category-upload");
+        RecordingDocumentMapper mapper = new RecordingDocumentMapper(null);
+        RecordingIndexingService indexingService = new RecordingIndexingService();
+        DocumentServiceImpl service = new DocumentServiceImpl(mapper, indexingService);
+        ReflectionTestUtils.setField(service, "uploadPath", uploadDir.toString());
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "policy.pdf",
+                "application/pdf",
+                "校园制度".getBytes()
+        );
+
+        Document uploaded = service.upload(1L, file, 7L);
+
+        assertEquals(7L, mapper.insertedDocument.getCategoryId());
+        assertEquals(7L, indexingService.indexedDocuments.getFirst().getCategoryId());
+        assertEquals(7L, uploaded.getCategoryId());
+    }
 
     @Test
     void deleteByIdRemovesDbRecordLocalFileAndIndexedSegments() throws Exception {
@@ -37,9 +60,11 @@ class DocumentServiceImplTest {
 
     private static class RecordingIndexingService implements DocumentIndexingService {
         private final List<Long> removedDocumentIds = new ArrayList<>();
+        private final List<Document> indexedDocuments = new ArrayList<>();
 
         @Override
         public void index(Document document, Path filePath) {
+            indexedDocuments.add(document);
         }
 
         @Override
@@ -51,6 +76,7 @@ class DocumentServiceImplTest {
     private static class RecordingDocumentMapper implements DocumentMapper {
         private final Document document;
         private final List<Long> deletedDocumentIds = new ArrayList<>();
+        private Document insertedDocument;
 
         private RecordingDocumentMapper(Document document) {
             this.document = document;
@@ -78,7 +104,9 @@ class DocumentServiceImplTest {
 
         @Override
         public int insert(Document document) {
-            return 0;
+            document.setId(100L);
+            insertedDocument = document;
+            return 1;
         }
 
         @Override

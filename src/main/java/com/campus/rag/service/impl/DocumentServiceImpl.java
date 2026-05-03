@@ -52,13 +52,18 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public Document upload(Long userId, MultipartFile file) {
+        return upload(userId, file, null);
+    }
+
+    @Override
+    public Document upload(Long userId, MultipartFile file, Long categoryId) {
         validateSupportedDocument(file);
 
         DocumentIngestionContext ctx = new DocumentIngestionContext();
         ctx.setRawFile(file);
 
         // (b) DB 初始化：status=1 代表"处理中"，防止服务重启时被误判为待处理
-        Document doc = initDbRecord(userId, file);
+        Document doc = initDbRecord(userId, file, categoryId);
         ctx.setDbDocument(doc);
 
         try {
@@ -101,12 +106,13 @@ public class DocumentServiceImpl implements DocumentService {
     /**
      * 初始化 DB 记录，status=1（处理中）
      */
-    private Document initDbRecord(Long userId, MultipartFile file) {
+    private Document initDbRecord(Long userId, MultipartFile file, Long categoryId) {
         String originalFileName = file.getOriginalFilename() != null
                 ? file.getOriginalFilename() : "unknown.pdf";
 
         Document doc = new Document();
         doc.setUserId(userId);
+        doc.setCategoryId(categoryId);
         doc.setFileName(originalFileName);
         doc.setFilePath("");          // 落盘后回填
         doc.setFileType(getFileExtension(originalFileName));

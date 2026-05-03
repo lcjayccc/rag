@@ -102,6 +102,9 @@ public class DocumentIndexingServiceImpl implements DocumentIndexingService {
             meta.put("documentId", String.valueOf(dbDoc.getId()));
             meta.put("fileName", dbDoc.getFileName());
             meta.put("chunkIndex", String.valueOf(i));
+            if (dbDoc.getCategoryId() != null) {
+                meta.put("categoryId", String.valueOf(dbDoc.getCategoryId()));
+            }
             enriched.add(TextSegment.from(rawChunks.get(i).text(), meta));
         }
         return enriched;

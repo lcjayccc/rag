@@ -46,6 +46,17 @@ class DocumentControllerAuthorizationTest {
     }
 
     @Test
+    void adminUploadPassesCategoryIdToService() {
+        RecordingDocumentService service = new RecordingDocumentService();
+        DocumentController controller = new DocumentController(service);
+        AuthContext.set(new AuthPrincipal(1L, "admin", UserRole.ADMIN));
+
+        controller.upload(null, 7L);
+
+        assertEquals(7L, service.uploadedCategoryId);
+    }
+
+    @Test
     void adminListsAllDocuments() {
         RecordingDocumentService service = new RecordingDocumentService();
         DocumentController controller = new DocumentController(service);
@@ -58,11 +69,21 @@ class DocumentControllerAuthorizationTest {
 
     private static class RecordingDocumentService implements DocumentService {
         private final List<Long> deletedIds = new ArrayList<>();
+        private Long uploadedCategoryId;
 
         @Override
         public Document upload(Long userId, MultipartFile file) {
             Document document = new Document();
             document.setUserId(userId);
+            return document;
+        }
+
+        @Override
+        public Document upload(Long userId, MultipartFile file, Long categoryId) {
+            uploadedCategoryId = categoryId;
+            Document document = new Document();
+            document.setUserId(userId);
+            document.setCategoryId(categoryId);
             return document;
         }
 

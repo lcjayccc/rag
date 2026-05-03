@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import static dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey;
+
 @Slf4j
 @Service
 public class RagServiceImpl implements RagService {
@@ -44,7 +46,7 @@ public class RagServiceImpl implements RagService {
     }
 
     @Override
-    public RagPromptResult buildRagPrompt(String userMessage) {
+    public RagPromptResult buildRagPrompt(String userMessage, Long categoryId) {
         log.info("【RAG 检索大脑】开始为问题寻找答案: \"{}\"", userMessage);
         long startTime = System.currentTimeMillis();
 
@@ -52,12 +54,17 @@ public class RagServiceImpl implements RagService {
             // 1. 问题向量化
             Embedding questionEmbedding = embeddingModel.embed(userMessage).content();
 
-            // 2. 内存向量库 Top-3 检索，minScore 过滤低相关度垃圾信息
-            EmbeddingSearchRequest searchRequest = EmbeddingSearchRequest.builder()
+            // 2. 内存向量库 Top-K 检索；categoryId 为空时全库检索，不为空时只召回指定分类切片。
+            var searchBuilder = EmbeddingSearchRequest.builder()
                     .queryEmbedding(questionEmbedding)
                     .maxResults(TOP_K)
-                    .minScore(MIN_SCORE)
-                    .build();
+                    .minScore(MIN_SCORE);
+
+            if (categoryId != null) {
+                searchBuilder.filter(metadataKey("categoryId").isEqualTo(String.valueOf(categoryId)));
+            }
+
+            EmbeddingSearchRequest searchRequest = searchBuilder.build();
 
             EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(searchRequest);
             List<EmbeddingMatch<TextSegment>> matches = searchResult.matches();

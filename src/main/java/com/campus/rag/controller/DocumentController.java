@@ -24,9 +24,10 @@ public class DocumentController {
     }
 
     @PostMapping("/upload")
-    public Result<Document> upload(@RequestParam("file") MultipartFile file) {
+    public Result<Document> upload(@RequestParam("file") MultipartFile file,
+                                   @RequestParam(value = "categoryId", required = false) Long categoryId) {
         AuthPrincipal admin = AuthContext.requireAdmin();
-        Document doc = documentService.upload(admin.getUserId(), file);
+        Document doc = documentService.upload(admin.getUserId(), file, categoryId);
         return Result.success(doc);
     }
 

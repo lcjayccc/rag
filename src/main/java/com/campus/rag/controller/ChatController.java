@@ -34,10 +34,10 @@ public class ChatController {
         return aiChatService.chatWithAi(message);
     }
 
-    // 新增！流式！测试接口
+    // 流式问答接口：categoryId 为空时全库检索，不为空时只检索指定分类。
     @GetMapping(value = "/stream", produces = "text/event-stream;charset=UTF-8")
-    public SseEmitter streamChat(@RequestParam String message) {
-        // 直接调用 Service 层的流式方法
-        return aiChatService.streamChatWithAi(message);
+    public SseEmitter streamChat(@RequestParam String message,
+                                 @RequestParam(required = false) Long categoryId) {
+        return aiChatService.streamChatWithAi(message, categoryId);
     }
 }

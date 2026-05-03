@@ -41,7 +41,7 @@ Campus RAG 是一个面向河南工业大学校园资料的智能问答系统。
 | 登录鉴权 | 真实登录 + `ADMIN/USER` | 已完成 |
 | 查询日志 | `rag_query_log` | 基础写入已完成 |
 | 引用溯源 | 来源文档标注 | 已完成基础展示 |
-| 分类知识库 | `document_category` + 范围检索 | 下一阶段 |
+| 分类知识库 | `document_category` + 范围检索 | 前后端代码已接入，待联调验证 |
 | 向量持久化 | Chroma | 后续评估 |
 | OCR | 图片/扫描件文本识别 | 后续独立阶段 |
 
@@ -191,6 +191,21 @@ Campus RAG 是一个面向河南工业大学校园资料的智能问答系统。
 - 问答时支持选择“全库”或某个分类范围。
 - `RagService` 根据分类做 MetadataFilter。
 
+当前已完成的后端基础：
+
+1. 新增 `document_category` 建表脚本和默认分类初始化数据。
+2. 新增分类实体、Mapper、Service 和管理接口。
+3. 文档上传接口支持可选 `categoryId`，`document` 表新增 `category_id`。
+4. 文档切片元数据已写入 `categoryId`。
+5. `RagService` 已支持可选 `categoryId`，通过 MetadataFilter 限制向量召回范围。
+6. `/api/chat/stream` 已支持可选 `categoryId` 参数，兼容全库和分类检索两种问答范围。
+
+当前已完成的前端基础：
+
+1. 知识库控制台可加载分类列表，上传前选择资料分类。
+2. 文档列表可根据 `categoryId` 展示分类名称，并支持按分类搜索。
+3. 聊天页可选择“全库”或具体分类，并将分类范围传给 SSE 问答接口。
+
 ## 8. 后续基础设施评估
 
 ### Chroma 向量持久化
@@ -281,8 +296,6 @@ src/main/resources/prompts/
 
 ## 10. 当前最近任务
 
-1. 验证 `rag_query_log` 入库记录是否包含用户、问题、召回数、最高分、命中/拒答和耗时。
-2. 启动 `document_category` 分类知识库设计。
-3. 新增分类表、实体、Mapper 和分类管理接口。
-4. 上传文档时支持选择分类，并把 `categoryId` 写入文档切片元数据。
-5. 问答时支持按“全库/分类”范围检索。
+1. 在 MySQL 应用 `document_category` 和 `document.category_id` 迁移 SQL。
+2. 启动前后端，验证分类上传、分类展示和分类范围问答。
+3. 验证同一问题在全库和具体分类下的召回结果差异。

@@ -48,14 +48,15 @@ public class AiChatServiceImpl implements AiChatService {
     }
     // 新增 完整的流式输出处理逻辑
     @Override
-    public SseEmitter streamChatWithAi(String userMessage) {
+    public SseEmitter streamChatWithAi(String userMessage, Long categoryId) {
         AuthPrincipal principal = AuthContext.requireLogin();
         long requestStart = System.currentTimeMillis();
         // 【Step 8】: 将超时时间设为 0L（永不超时），防止长回答被 Spring Boot 强行截断
         SseEmitter emitter = new SseEmitter(0L);
 
         // 【Step 7】: 调用 RAG 大脑，把简短的用户问题变成带有上下文的开卷超级 Prompt
-        RagPromptResult ragResult = ragService.buildRagPrompt(userMessage);
+        // categoryId 为空表示全库检索；不为空时 RagService 会按切片元数据过滤分类范围。
+        RagPromptResult ragResult = ragService.buildRagPrompt(userMessage, categoryId);
         log.info("【流式对话】开卷考试试卷已下发大模型，准备生成回答...");
 
         // 将包装好的超级 Prompt 喂给千问
