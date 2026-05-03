@@ -25,6 +25,11 @@ public interface DocumentService {
     List<Document> listByUserId(Long userId);
 
     /**
+     * 管理员查询全局知识库文档列表
+     */
+    List<Document> listAll();
+
+    /**
      * 根据 ID 删除文档
      */
     void deleteById(Long id);

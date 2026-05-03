@@ -1,6 +1,8 @@
 package com.campus.rag.controller;
 
 import com.campus.rag.common.Result;
+import com.campus.rag.dto.AuthResponse;
+import com.campus.rag.service.AuthService;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -10,16 +12,20 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/auth")
 public class AuthController {
 
+    private final AuthService authService;
+
+    public AuthController(AuthService authService) {
+        this.authService = authService;
+    }
+
     @PostMapping("/login")
-    public Result<?> login(@RequestBody LoginRequest request) {
-        // TODO: 校验用户名密码，返回 token
-        return Result.success();
+    public Result<AuthResponse> login(@RequestBody LoginRequest request) {
+        return Result.success(authService.login(request.getUsername(), request.getPassword()));
     }
 
     @PostMapping("/register")
-    public Result<?> register(@RequestBody RegisterRequest request) {
-        // TODO: 注册新用户
-        return Result.success();
+    public Result<AuthResponse> register(@RequestBody RegisterRequest request) {
+        return Result.success(authService.register(request.getUsername(), request.getPassword(), request.getEmail()));
     }
 
     @lombok.Data

@@ -7,27 +7,37 @@
         <result column="username" property="username"/>
         <result column="password" property="password"/>
         <result column="email" property="email"/>
+        <result column="role" property="role"/>
+        <result column="status" property="status"/>
+        <result column="last_login" property="lastLogin"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
     </resultMap>
 
     <select id="selectById" resultMap="BaseResultMap">
-        SELECT id, username, password, email, create_time, update_time
+        SELECT id, username, password, email, role, status, last_login, create_time, update_time
         FROM user WHERE id = #{id}
     </select>
 
     <select id="selectByUsername" resultMap="BaseResultMap">
-        SELECT id, username, password, email, create_time, update_time
+        SELECT id, username, password, email, role, status, last_login, create_time, update_time
         FROM user WHERE username = #{username}
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO user (username, password, email, create_time, update_time)
-        VALUES (#{username}, #{password}, #{email}, #{createTime}, #{updateTime})
+        INSERT INTO user (username, password, email, role, status, last_login, create_time, update_time)
+        VALUES (#{username}, #{password}, #{email}, #{role}, #{status}, #{lastLogin}, #{createTime}, #{updateTime})
     </insert>
 
     <update id="updateById">
-        UPDATE user SET username=#{username}, password=#{password}, email=#{email}, update_time=#{updateTime}
+        UPDATE user
+        SET username=#{username},
+            password=#{password},
+            email=#{email},
+            role=#{role},
+            status=#{status},
+            last_login=#{lastLogin},
+            update_time=#{updateTime}
         WHERE id = #{id}
     </update>
 </mapper>

@@ -24,6 +24,12 @@
         ORDER BY update_time DESC, id DESC
     </select>
 
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT id, user_id, file_name, file_path, file_type, status, create_time, update_time
+        FROM document
+        ORDER BY update_time DESC, id DESC
+    </select>
+
     <select id="selectCompleted" resultMap="BaseResultMap">
         SELECT id, user_id, file_name, file_path, file_type, status, create_time, update_time
         FROM document WHERE status = 2

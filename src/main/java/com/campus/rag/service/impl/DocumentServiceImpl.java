@@ -180,6 +180,11 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    public List<Document> listAll() {
+        return documentMapper.selectAll();
+    }
+
+    @Override
     public void deleteById(Long id) {
         Document document = documentMapper.selectById(id);
         if (document == null) {

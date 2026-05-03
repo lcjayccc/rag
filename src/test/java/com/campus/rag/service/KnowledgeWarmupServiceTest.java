@@ -70,6 +70,11 @@ class KnowledgeWarmupServiceTest {
         }
 
         @Override
+        public List<Document> selectAll() {
+            return List.of();
+        }
+
+        @Override
         public List<Document> selectCompleted() {
             return completedDocuments;
         }
