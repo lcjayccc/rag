@@ -37,7 +37,7 @@ public class RagServiceImpl implements RagService {
     private final EmbeddingModel embeddingModel;
     private final ChatLanguageModel chatLanguageModel;
 
-    @Value("${rag.retrieval.min-score:0.75}")
+    @Value("${rag.retrieval.min-score:0.65}")
     private double minScore;
 
     @Value("classpath:prompts/answer-chat-kb.st")
