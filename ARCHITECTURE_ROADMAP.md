@@ -37,7 +37,7 @@ Campus RAG 是一个面向河南工业大学校园资料的智能问答系统。
 | 向量存储 | Chroma REST API v2 + `ChromaEmbeddingStoreAdapter`（可回退 InMemory） | 已完成 |
 | 启动预热 | `KnowledgeWarmupService`（仅 inmemory）+ `Bm25WarmupService`（仅 chroma） | 已完成 |
 | 混合检索 | 向量 + BM25 + RRF 融合 | 已完成 |
-| Rerank | DashScope gte-rerank（失败回退 RRF） | 已完成（API 请求格式待调试） |
+| Rerank | DashScope gte-rerank（失败回退 RRF） | 已完成 |
 | 删除清理 | 按 `documentId` 移除内存向量切片 | 已完成 |
 | Prompt | `src/main/resources/prompts/` | 已统一外置 |
 | 登录鉴权 | 真实登录 + `ADMIN/USER` | 已完成 |

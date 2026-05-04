@@ -74,13 +74,13 @@ public class RerankService {
                     .retrieve()
                     .body(RerankResponse.class);
 
-            if (response == null || response.getOutput() == null) {
+            if (response == null || response.getOutput() == null || response.getOutput().getResults() == null) {
                 log.warn("[Rerank] API 返回空结果，回退到融合分数");
                 return documents;
             }
 
             // 按 relevanceScore 降序排列，设置 rerankScore 到结果中
-            List<RerankResponse.RerankResult> results = response.getOutput();
+            List<RerankResponse.RerankResult> results = response.getOutput().getResults();
             results.sort(Comparator.comparing(RerankResponse.RerankResult::getRelevanceScore).reversed());
 
             List<SearchResult> reranked = new java.util.ArrayList<>();

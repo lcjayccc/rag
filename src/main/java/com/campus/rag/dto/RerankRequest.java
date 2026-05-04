@@ -1,5 +1,6 @@
 package com.campus.rag.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 @Data
@@ -16,6 +17,10 @@ public class RerankRequest {
 
     @Data
     public static class RerankParameters {
+        @JsonProperty("top_n")
         private Integer topN;
+
+        @JsonProperty("return_documents")
+        private Boolean returnDocuments;
     }
 }
