@@ -51,4 +51,23 @@
     <delete id="deleteById">
         DELETE FROM document WHERE id = #{id}
     </delete>
+
+    <select id="countAll" resultType="int">
+        SELECT COUNT(*) FROM document
+    </select>
+
+    <select id="countByStatus" resultType="int">
+        SELECT COUNT(*) FROM document WHERE status = #{status}
+    </select>
+
+    <select id="countGroupByCategory" resultType="map">
+        SELECT category_id, COUNT(*) AS cnt FROM document GROUP BY category_id
+    </select>
+
+    <select id="selectByStatusAndCategory" resultMap="BaseResultMap">
+        SELECT id, user_id, category_id, file_name, file_path, file_type, status, create_time, update_time
+        FROM document WHERE status = #{status}
+        <if test="categoryId != null">AND category_id = #{categoryId}</if>
+        ORDER BY update_time DESC, id DESC
+    </select>
 </mapper>

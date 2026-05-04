@@ -93,5 +93,10 @@ class KnowledgeWarmupServiceTest {
         public int deleteById(Long id) {
             return 0;
         }
+
+        @Override public int countAll() { return 0; }
+        @Override public int countByStatus(int status) { return 0; }
+        @Override public List<java.util.Map<String, Object>> countGroupByCategory() { return List.of(); }
+        @Override public List<Document> selectByStatusAndCategory(int status, Long categoryId) { return List.of(); }
     }
 }

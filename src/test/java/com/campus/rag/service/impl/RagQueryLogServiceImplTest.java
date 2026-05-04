@@ -49,5 +49,13 @@ class RagQueryLogServiceImplTest {
             saved = log;
             return 1;
         }
+
+        @Override public List<RagQueryLog> selectPage(int offset, int pageSize, String keyword, Boolean ragHit, Long userId) { return List.of(); }
+        @Override public int countFiltered(String keyword, Boolean ragHit, Long userId) { return 0; }
+        @Override public int countAll() { return 0; }
+        @Override public int countToday() { return 0; }
+        @Override public int countRejected() { return 0; }
+        @Override public int countHit() { return 0; }
+        @Override public int avgLatencyMs() { return 0; }
     }
 }

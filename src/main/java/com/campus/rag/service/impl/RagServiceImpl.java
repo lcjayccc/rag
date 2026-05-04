@@ -6,6 +6,7 @@ import com.campus.rag.intent.IntentType;
 import com.campus.rag.search.HybridSearchService;
 import com.campus.rag.search.SearchResult;
 import com.campus.rag.service.RagService;
+import com.campus.rag.service.SystemConfigService;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.input.PromptTemplate;
@@ -27,13 +28,15 @@ import java.util.stream.Collectors;
 @Service
 public class RagServiceImpl implements RagService {
 
-    private static final int TOP_K = 3;
+    private static final int DEFAULT_TOP_K = 3;
 
     private final HybridSearchService hybridSearchService;
     private final ChatLanguageModel chatLanguageModel;
 
     @Value("${rag.retrieval.min-score:0.65}")
-    private double minScore;
+    private double defaultMinScore;
+
+    private final SystemConfigService configService;
 
     @Value("classpath:prompts/answer-chat-kb.st")
     private Resource promptTemplateResource;
@@ -42,9 +45,19 @@ public class RagServiceImpl implements RagService {
     private Resource rewritePromptResource;
 
     public RagServiceImpl(HybridSearchService hybridSearchService,
-                          ChatLanguageModel chatLanguageModel) {
+                          ChatLanguageModel chatLanguageModel,
+                          SystemConfigService configService) {
         this.hybridSearchService = hybridSearchService;
         this.chatLanguageModel = chatLanguageModel;
+        this.configService = configService;
+    }
+
+    private double currentMinScore() {
+        return configService.getDouble("rag.retrieval.min-score", defaultMinScore);
+    }
+
+    private int currentTopK() {
+        return configService.getInt("rag.retrieval.top-k", DEFAULT_TOP_K);
     }
 
     @Override
@@ -54,7 +67,7 @@ public class RagServiceImpl implements RagService {
 
         try {
             // 1. 混合检索（向量 + BM25 → RRF → Rerank）
-            List<SearchResult> results = hybridSearchService.search(userMessage, categoryId, TOP_K, minScore);
+            List<SearchResult> results = hybridSearchService.search(userMessage, categoryId, currentTopK(), currentMinScore());
 
             log.info("【RAG 检索大脑】命中强相关知识碎片数量: {}", results.size());
 
@@ -82,7 +95,7 @@ public class RagServiceImpl implements RagService {
             result.setTopScore(results.stream().map(SearchResult::effectiveScore).findFirst().orElse(null));
             result.setRagHit(!results.isEmpty());
             result.setRejected(results.isEmpty());
-            result.setMinScoreUsed(minScore);
+            result.setMinScoreUsed(currentMinScore());
             result.setRetrievalLatencyMs(System.currentTimeMillis() - startTime);
             result.setSources(toSources(results));
             result.setCitationIndex(buildCitationIndex(results));
@@ -97,7 +110,7 @@ public class RagServiceImpl implements RagService {
             result.setRetrievedCount(0);
             result.setRagHit(false);
             result.setRejected(true);
-            result.setMinScoreUsed(minScore);
+            result.setMinScoreUsed(currentMinScore());
             result.setRetrievalLatencyMs(System.currentTimeMillis() - startTime);
             return result;
         }
@@ -114,7 +127,7 @@ public class RagServiceImpl implements RagService {
             int totalHits = 0;
 
             for (String query : searchQueries) {
-                List<SearchResult> results = hybridSearchService.search(query, categoryId, TOP_K, minScore);
+                List<SearchResult> results = hybridSearchService.search(query, categoryId, currentTopK(), currentMinScore());
                 for (SearchResult r : results) {
                     String key = r.getMetadata().getString("documentId") + "_"
                             + r.getMetadata().getString("chunkIndex");
@@ -156,7 +169,7 @@ public class RagServiceImpl implements RagService {
             result.setTopScore(topScore > 0 ? topScore : null);
             result.setRagHit(!allResults.isEmpty());
             result.setRejected(allResults.isEmpty());
-            result.setMinScoreUsed(minScore);
+            result.setMinScoreUsed(currentMinScore());
             result.setRetrievalLatencyMs(System.currentTimeMillis() - startTime);
             result.setSources(toSources(allResults));
             result.setCitationIndex(buildCitationIndex(allResults));
@@ -171,7 +184,7 @@ public class RagServiceImpl implements RagService {
             result.setRetrievedCount(0);
             result.setRagHit(false);
             result.setRejected(true);
-            result.setMinScoreUsed(minScore);
+            result.setMinScoreUsed(currentMinScore());
             result.setRetrievalLatencyMs(System.currentTimeMillis() - startTime);
             return result;
         }

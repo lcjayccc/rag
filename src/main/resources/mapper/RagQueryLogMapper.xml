@@ -24,4 +24,52 @@
         (#{userId}, #{question}, #{retrievedCount}, #{topScore}, #{ragHit}, #{rejected},
          #{docIdsHit}, #{minScoreUsed}, #{latencyMs}, #{createTime})
     </insert>
+
+    <select id="selectPage" resultMap="BaseResultMap">
+        SELECT * FROM rag_query_log WHERE 1=1
+        <if test="keyword != null and keyword != ''">
+            AND question LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        <if test="ragHit != null">
+            AND is_rag_hit = #{ragHit}
+        </if>
+        <if test="userId != null">
+            AND user_id = #{userId}
+        </if>
+        ORDER BY create_time DESC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <select id="countFiltered" resultType="int">
+        SELECT COUNT(*) FROM rag_query_log WHERE 1=1
+        <if test="keyword != null and keyword != ''">
+            AND question LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        <if test="ragHit != null">
+            AND is_rag_hit = #{ragHit}
+        </if>
+        <if test="userId != null">
+            AND user_id = #{userId}
+        </if>
+    </select>
+
+    <select id="countAll" resultType="int">
+        SELECT COUNT(*) FROM rag_query_log
+    </select>
+
+    <select id="countToday" resultType="int">
+        SELECT COUNT(*) FROM rag_query_log WHERE DATE(create_time) = CURDATE()
+    </select>
+
+    <select id="countRejected" resultType="int">
+        SELECT COUNT(*) FROM rag_query_log WHERE is_rejected = 1
+    </select>
+
+    <select id="countHit" resultType="int">
+        SELECT COUNT(*) FROM rag_query_log WHERE is_rag_hit = 1
+    </select>
+
+    <select id="avgLatencyMs" resultType="int">
+        SELECT COALESCE(AVG(latency_ms), 0) FROM rag_query_log
+    </select>
 </mapper>

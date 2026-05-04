@@ -23,12 +23,13 @@ public class StructureAwareChunker extends BaseChunker implements ChunkingStrate
     private static final int MAX_SECTION_CHARS = 500;
 
     // 中文标题：一、/ 二、| 第一章/第二节 | （一）/ (一) | 1.1 标题 | ## Markdown
+    // 捕获完整标题行（标记 + 标题正文），仅匹配行首
     private static final Pattern HEADING = Pattern.compile(
-            "^([一二三四五六七八九十]+[、，．.]\\s*" +
-            "|第[一二三四五六七八九十百千]+[章节条]\\s*" +
-            "|[（(][一二三四五六七八九十]+[)）]\\s*" +
-            "|\\d+(?:\\.\\d+)*\\s+" +
-            "|#{1,3}\\s+)",
+            "^([一二三四五六七八九十]+[、，．.][^\n]*" +
+            "|第[一二三四五六七八九十百千]+[章节条][^\n]*" +
+            "|[（(][一二三四五六七八九十]+[)）][^\n]*" +
+            "|\\d+(?:\\.\\d+)*\\s+[^\n]*" +
+            "|#{1,3}\\s+[^\n]*)",
             Pattern.MULTILINE
     );
 
@@ -75,8 +76,8 @@ public class StructureAwareChunker extends BaseChunker implements ChunkingStrate
                     sections.add(new Section(lastTitle, body));
                 }
             }
-            // 新标题
-            lastTitle = m.group().replaceAll("[#\\s]+$", "").trim();
+            // 新标题：去除首尾空白和尾随 # 号
+            lastTitle = m.group().trim().replaceAll("[#]+$", "").trim();
             lastEnd = m.end();
         }
 

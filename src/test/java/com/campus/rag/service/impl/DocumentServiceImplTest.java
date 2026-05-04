@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -119,5 +120,10 @@ class DocumentServiceImplTest {
             deletedDocumentIds.add(id);
             return 1;
         }
+
+        @Override public int countAll() { return 0; }
+        @Override public int countByStatus(int status) { return 0; }
+        @Override public List<Map<String, Object>> countGroupByCategory() { return List.of(); }
+        @Override public List<Document> selectByStatusAndCategory(int status, Long categoryId) { return List.of(); }
     }
 }
