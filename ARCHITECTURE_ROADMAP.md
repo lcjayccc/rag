@@ -31,8 +31,9 @@ Campus RAG 是一个面向河南工业大学校园资料的智能问答系统。
 | 后端 | Java 21 + Spring Boot | 已完成 |
 | ORM | MyBatis + MySQL | 已完成 |
 | LLM | LangChain4j + DashScope Qwen-Plus | 已完成 |
-| 文档解析 | PDFBox Parser + Apache POI Parser | PDF / Office 已接入 |
-| 切片 | `DocumentSplitters.recursive(500, 50)` | 已完成 |
+| 文档解析 | PDFBox Parser + Apache POI Parser + **Apache Tika（备选）** | Phase 4 备选解析器就绪 |
+| 切片 | **多策略切片**：FixedSize / StructureAware / Semantic + `document_category.default_chunking_strategy` | Phase 4 已完成 |
+| 元数据增强 | `sectionTitle` / `pageNumber` / `documentTitle` | Phase 4 已注入每条 Chunk |
 | 向量化 | DashScope `text-embedding-v2` | 已完成 |
 | 向量存储 | Chroma REST API v2 + `ChromaEmbeddingStoreAdapter`（可回退 InMemory） | 已完成 |
 | 启动预热 | `KnowledgeWarmupService`（仅 inmemory）+ `Bm25WarmupService`（仅 chroma） | 已完成 |
@@ -346,7 +347,7 @@ OCR 应作为独立链路设计，不混入普通 PDF / Office 解析逻辑。
 - [x] P1：Chroma 运行态替代 InMemory，重启后向量不丢失
 - [x] P2：混合检索 + Rerank 链路可运行，消融数据产出
 - [x] P3：意图分类可用，Redis fallback 不阻塞问答
-- [ ] P4：新文档可选用结构感知切片，元数据写入向量
+- [x] P4：Tika 备选解析 + FixedSize/StructureAware/Semantic 三策略切片 + 元数据增强（sectionTitle/pageNumber/documentTitle）
 - [ ] P5：统计大屏数据正确，系统配置即时生效
 - [ ] P6：回归数据集可 JUnit 跑通，关键指标产出
 - [ ] P7：前后端联调无误，答辩 demo 可用
@@ -416,8 +417,8 @@ src/main/resources/prompts/
 
 ## 12. 当前最近任务
 
-1. 扩充知识库文档数量，优先补充稳定可引用的校园制度、通知、表格和 FAQ。
-2. 浏览器联调验证 Chunk 行内角标溯源和 Query Rewrite 实际效果。
-3. 整理 RAG 问答效果回归数据集（Phase 6），覆盖命中、拒答、日期、流式完成和分类范围检索。
-4. 启动 Phase 4：文档摄入增强（Tika 备选解析 + 多策略切片 + 元数据增强）。
-5. 提交前运行 `clean testClasses` 和全量 `test`，保持 44/44 后端测试通过基线。
+1. 启动 Phase 5：管理后台增强（统计大屏 + 查询日志分页 + 系统配置调节）。
+2. 扩充知识库文档数量，优先补充稳定可引用的校园制度、通知、表格和 FAQ。
+3. 浏览器联调验证 Chunk 行内角标溯源和 Query Rewrite 实际效果。
+4. 整理 RAG 问答效果回归数据集（Phase 6），覆盖命中、拒答、日期、流式完成和分类范围检索。
+5. 提交前运行 `clean testClasses` 和全量 `test`，保持 56/56 后端测试通过基线。

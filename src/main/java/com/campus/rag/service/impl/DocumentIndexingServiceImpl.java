@@ -1,16 +1,12 @@
 package com.campus.rag.service.impl;
 
+import com.campus.rag.chunking.ChunkingStrategy;
+import com.campus.rag.chunking.ChunkingStrategyFactory;
 import com.campus.rag.entity.Document;
+import com.campus.rag.parser.DocumentParserSelector;
 import com.campus.rag.search.Bm25IndexService;
 import com.campus.rag.search.SearchResult;
 import com.campus.rag.service.DocumentIndexingService;
-import dev.langchain4j.data.document.DocumentSplitter;
-import dev.langchain4j.data.document.Metadata;
-import dev.langchain4j.data.document.loader.FileSystemDocumentLoader;
-import dev.langchain4j.data.document.DocumentParser;
-import dev.langchain4j.data.document.parser.apache.pdfbox.ApachePdfBoxDocumentParser;
-import dev.langchain4j.data.document.parser.apache.poi.ApachePoiDocumentParser;
-import dev.langchain4j.data.document.splitter.DocumentSplitters;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -19,42 +15,51 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 
 import static dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey;
 
+/**
+ * 文档索引服务实现。
+ *
+ * <p>Phase 4 重构：解析器选择 → 多策略切片 → 向量化 → 写入存储。
+ * 解析失败时自动回退 Tika，切片策略按文档分类选择。
+ */
 @Slf4j
 @Service
 public class DocumentIndexingServiceImpl implements DocumentIndexingService {
 
-    private static final Set<String> OFFICE_EXTENSIONS = Set.of(
-            "doc", "docx", "xls", "xlsx", "ppt", "pptx"
-    );
-
     private final EmbeddingModel embeddingModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
     private final Bm25IndexService bm25IndexService;
+    private final DocumentParserSelector parserSelector;
+    private final ChunkingStrategyFactory chunkingFactory;
 
     public DocumentIndexingServiceImpl(EmbeddingModel embeddingModel,
                                        EmbeddingStore<TextSegment> embeddingStore,
-                                       Bm25IndexService bm25IndexService) {
+                                       Bm25IndexService bm25IndexService,
+                                       DocumentParserSelector parserSelector,
+                                       ChunkingStrategyFactory chunkingFactory) {
         this.embeddingModel = embeddingModel;
         this.embeddingStore = embeddingStore;
         this.bm25IndexService = bm25IndexService;
+        this.parserSelector = parserSelector;
+        this.chunkingFactory = chunkingFactory;
     }
 
     @Override
     public void index(Document document, Path filePath) {
-        dev.langchain4j.data.document.Document lcDoc = parseDocument(filePath);
+        // Phase 4: 使用策略选择器（主解析器 → Tika 回退）
+        dev.langchain4j.data.document.Document lcDoc = parserSelector.parse(filePath);
         log.info("[文档索引] [文档ID={}] 文件解析完成，类型: {}，原始文本长度: {} 字符",
                 document.getId(), document.getFileType(), lcDoc.text().length());
 
-        List<TextSegment> chunks = splitAndEnrich(lcDoc, document);
-        log.info("[文档索引] [文档ID={}] 切片完成，共 {} 个 Chunk（策略: recursive 500/50）",
-                document.getId(), chunks.size());
+        // Phase 4: 按分类选择切片策略
+        ChunkingStrategy strategy = chunkingFactory.select(document.getCategoryId());
+        String strategyName = strategy.getClass().getSimpleName();
+        List<TextSegment> chunks = strategy.chunk(lcDoc.text(), document);
+        log.info("[文档索引] [文档ID={}] 切片完成，共 {} 个 Chunk（策略: {}）",
+                document.getId(), chunks.size(), strategyName);
 
         List<Embedding> embeddings = embeddingModel.embedAll(chunks).content();
         embeddingStore.addAll(embeddings, chunks);
@@ -74,52 +79,8 @@ public class DocumentIndexingServiceImpl implements DocumentIndexingService {
         if (documentId == null) {
             return;
         }
-
         embeddingStore.removeAll(metadataKey("documentId").isEqualTo(String.valueOf(documentId)));
         bm25IndexService.removeDocument(documentId);
         log.info("[文档索引] [文档ID={}] 已从 EmbeddingStore 和 BM25 移除对应切片", documentId);
-    }
-
-    private dev.langchain4j.data.document.Document parseDocument(Path filePath) {
-        return FileSystemDocumentLoader.loadDocument(filePath, parserFor(filePath));
-    }
-
-    private DocumentParser parserFor(Path filePath) {
-        String extension = getFileExtension(filePath);
-        if ("pdf".equals(extension)) {
-            return new ApachePdfBoxDocumentParser();
-        }
-        if (OFFICE_EXTENSIONS.contains(extension)) {
-            return new ApachePoiDocumentParser();
-        }
-        throw new IllegalArgumentException("不支持的文件类型: " + extension);
-    }
-
-    private String getFileExtension(Path filePath) {
-        String fileName = filePath.getFileName().toString().toLowerCase(Locale.ROOT);
-        int dotIndex = fileName.lastIndexOf('.');
-        if (dotIndex < 0 || dotIndex == fileName.length() - 1) {
-            return "";
-        }
-        return fileName.substring(dotIndex + 1);
-    }
-
-    private List<TextSegment> splitAndEnrich(dev.langchain4j.data.document.Document lcDoc,
-                                             Document dbDoc) {
-        DocumentSplitter splitter = DocumentSplitters.recursive(500, 50);
-        List<TextSegment> rawChunks = splitter.split(lcDoc);
-
-        List<TextSegment> enriched = new ArrayList<>(rawChunks.size());
-        for (int i = 0; i < rawChunks.size(); i++) {
-            Metadata meta = new Metadata();
-            meta.put("documentId", String.valueOf(dbDoc.getId()));
-            meta.put("fileName", dbDoc.getFileName());
-            meta.put("chunkIndex", String.valueOf(i));
-            if (dbDoc.getCategoryId() != null) {
-                meta.put("categoryId", String.valueOf(dbDoc.getCategoryId()));
-            }
-            enriched.add(TextSegment.from(rawChunks.get(i).text(), meta));
-        }
-        return enriched;
     }
 }

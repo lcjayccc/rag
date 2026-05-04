@@ -24,6 +24,9 @@ public class DocumentCategory {
 
     private Boolean enabled;
 
+    /** 默认切片策略：FIXED_SIZE / STRUCTURE_AWARE / SEMANTIC，默认 FIXED_SIZE */
+    private String defaultChunkingStrategy;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

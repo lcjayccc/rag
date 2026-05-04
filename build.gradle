@@ -53,6 +53,9 @@ dependencies {
     // Redis 会话持久化 + 限流（Phase 3）
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.apache.commons:commons-pool2'
+    // Apache Tika 备选文档解析（Phase 4）：PDFBox/POI 解析失败时自动回退
+    implementation 'org.apache.tika:tika-core:2.9.2'
+    implementation 'org.apache.tika:tika-parsers-standard-package:2.9.2'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'com.mysql:mysql-connector-j'
     annotationProcessor 'org.projectlombok:lombok'

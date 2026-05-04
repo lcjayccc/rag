@@ -9,30 +9,31 @@
         <result column="description" property="description"/>
         <result column="sort_order" property="sortOrder"/>
         <result column="enabled" property="enabled"/>
+        <result column="default_chunking_strategy" property="defaultChunkingStrategy"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
     </resultMap>
 
     <select id="selectById" resultMap="BaseResultMap">
-        SELECT id, name, code, description, sort_order, enabled, create_time, update_time
+        SELECT id, name, code, description, sort_order, enabled, default_chunking_strategy, create_time, update_time
         FROM document_category
         WHERE id = #{id}
     </select>
 
     <select id="selectByCode" resultMap="BaseResultMap">
-        SELECT id, name, code, description, sort_order, enabled, create_time, update_time
+        SELECT id, name, code, description, sort_order, enabled, default_chunking_strategy, create_time, update_time
         FROM document_category
         WHERE code = #{code}
     </select>
 
     <select id="selectAll" resultMap="BaseResultMap">
-        SELECT id, name, code, description, sort_order, enabled, create_time, update_time
+        SELECT id, name, code, description, sort_order, enabled, default_chunking_strategy, create_time, update_time
         FROM document_category
         ORDER BY sort_order ASC, id ASC
     </select>
 
     <select id="selectEnabled" resultMap="BaseResultMap">
-        SELECT id, name, code, description, sort_order, enabled, create_time, update_time
+        SELECT id, name, code, description, sort_order, enabled, default_chunking_strategy, create_time, update_time
         FROM document_category
         WHERE enabled = 1
         ORDER BY sort_order ASC, id ASC
@@ -40,9 +41,9 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO document_category
-        (name, code, description, sort_order, enabled, create_time, update_time)
+        (name, code, description, sort_order, enabled, default_chunking_strategy, create_time, update_time)
         VALUES
-        (#{name}, #{code}, #{description}, #{sortOrder}, #{enabled}, #{createTime}, #{updateTime})
+        (#{name}, #{code}, #{description}, #{sortOrder}, #{enabled}, #{defaultChunkingStrategy}, #{createTime}, #{updateTime})
     </insert>
 
     <update id="updateById">
@@ -52,6 +53,7 @@
             description=#{description},
             sort_order=#{sortOrder},
             enabled=#{enabled},
+            default_chunking_strategy=#{defaultChunkingStrategy},
             update_time=#{updateTime}
         WHERE id = #{id}
     </update>
