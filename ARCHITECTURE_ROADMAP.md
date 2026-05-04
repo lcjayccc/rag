@@ -38,6 +38,10 @@ Campus RAG 是一个面向河南工业大学校园资料的智能问答系统。
 | 启动预热 | `KnowledgeWarmupService`（仅 inmemory）+ `Bm25WarmupService`（仅 chroma） | 已完成 |
 | 混合检索 | 向量 + BM25 + RRF 融合 | 已完成 |
 | Rerank | DashScope gte-rerank（失败回退 RRF） | 已完成 |
+| 意图分类 | `IntentClassifierImpl` + 轻量三分类 Prompt | Phase 3 已完成 |
+| 会话管理 | Redis LIST + InMemory fallback | Phase 3 已完成 |
+| Query Rewrite | 校园场景增强 + 子问题拆分 | Phase 3 已完成 |
+| 限流 | `RateLimitInterceptor`（Redis INCR + TTL，异常放行） | Phase 3 已完成 |
 | 删除清理 | 按 `documentId` 移除内存向量切片 | 已完成 |
 | Prompt | `src/main/resources/prompts/` | 已统一外置 |
 | 登录鉴权 | 真实登录 + `ADMIN/USER` | 已完成 |
@@ -341,7 +345,7 @@ OCR 应作为独立链路设计，不混入普通 PDF / Office 解析逻辑。
 
 - [x] P1：Chroma 运行态替代 InMemory，重启后向量不丢失
 - [x] P2：混合检索 + Rerank 链路可运行，消融数据产出
-- [ ] P3：意图分类可用，Redis fallback 不阻塞问答
+- [x] P3：意图分类可用，Redis fallback 不阻塞问答
 - [ ] P4：新文档可选用结构感知切片，元数据写入向量
 - [ ] P5：统计大屏数据正确，系统配置即时生效
 - [ ] P6：回归数据集可 JUnit 跑通，关键指标产出
@@ -415,6 +419,5 @@ src/main/resources/prompts/
 1. 扩充知识库文档数量，优先补充稳定可引用的校园制度、通知、表格和 FAQ。
 2. 浏览器联调验证 Chunk 行内角标溯源和 Query Rewrite 实际效果。
 3. 整理 RAG 问答效果回归数据集（Phase 6），覆盖命中、拒答、日期、流式完成和分类范围检索。
-4. 调试 DashScope gte-rerank API 请求格式，恢复 Rerank 重排序能力。
-5. 启动 Phase 3：意图分类 + Query Rewrite 增强 + Redis 会话/限流。
-6. 提交前运行 `clean testClasses` 和全量 `test`，保持 44/44 后端测试通过基线。
+4. 启动 Phase 4：文档摄入增强（Tika 备选解析 + 多策略切片 + 元数据增强）。
+5. 提交前运行 `clean testClasses` 和全量 `test`，保持 44/44 后端测试通过基线。

@@ -3,6 +3,9 @@ package com.campus.rag.service.impl;
 import com.campus.rag.auth.AuthContext;
 import com.campus.rag.auth.AuthPrincipal;
 import com.campus.rag.dto.RagPromptResult;
+import com.campus.rag.intent.IntentClassifier;
+import com.campus.rag.intent.IntentResult;
+import com.campus.rag.intent.IntentType;
 import com.campus.rag.service.AiChatService;
 import com.campus.rag.service.RagQueryLogService;
 import com.campus.rag.service.RagService;
@@ -17,6 +20,7 @@ import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.Response;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -30,18 +34,21 @@ public class AiChatServiceImpl implements AiChatService {
     private final RagService ragService; // 【新增注入】
     private final RagQueryLogService ragQueryLogService;
     private final SessionHistoryService sessionHistoryService;
+    private final IntentClassifier intentClassifier;
 
-    // 构造器注入两个模型
+    // 构造器注入
     public AiChatServiceImpl(ChatLanguageModel chatLanguageModel,
                              StreamingChatLanguageModel streamingChatLanguageModel,
                              RagService ragService,
                              RagQueryLogService ragQueryLogService,
-                             SessionHistoryService sessionHistoryService) {
+                             SessionHistoryService sessionHistoryService,
+                             IntentClassifier intentClassifier) {
         this.chatLanguageModel = chatLanguageModel;
         this.streamingChatLanguageModel = streamingChatLanguageModel;//新增流式模型
         this.ragService = ragService;
         this.ragQueryLogService = ragQueryLogService;
         this.sessionHistoryService = sessionHistoryService;
+        this.intentClassifier = intentClassifier;
     }
 
     //同步聊天方式
@@ -58,14 +65,23 @@ public class AiChatServiceImpl implements AiChatService {
         // 【Step 8】: 将超时时间设为 0L（永不超时），防止长回答被 Spring Boot 强行截断
         SseEmitter emitter = new SseEmitter(0L);
 
+        // Phase 3: 意图分类 — 闲聊直接拒答，不走 RAG 管道
+        IntentResult intentResult = intentClassifier.classify(userMessage);
+        if (intentResult.getIntent() == IntentType.CHITCHAT) {
+            return handleChitchat(emitter, userMessage, sessionId, principal, requestStart);
+        }
+
         // 多轮对话 Query Rewrite：用历史上下文将追问改写成完整问题。
         String history = sessionHistoryService.getHistory(sessionId);
-        String searchQuery = ragService.rewriteQuery(userMessage, history);
+        // Phase 3: 意图分类已拆分则直接用拆分结果，否则走单问题改写
+        List<String> searchQueries = ragService.rewriteAndSplit(userMessage, history,
+                intentResult.getSubQuestions());
 
-        // 【Step 7】: 调用 RAG 大脑，把简短的用户问题变成带有上下文的开卷超级 Prompt
-        // categoryId 为空表示全库检索；不为空时 RagService 会按切片元数据过滤分类范围。
-        RagPromptResult ragResult = ragService.buildRagPrompt(searchQuery, categoryId);
-        log.info("【流式对话】开卷考试试卷已下发大模型，准备生成回答...");
+        // Phase 3: 多子问题检索 — 每个子问题独立检索后合并上下文
+        RagPromptResult ragResult = ragService.buildRagPrompt(searchQueries, categoryId,
+                intentResult.getIntent());
+        log.info("【流式对话】意图={}，子问题数={}，开卷考试试卷已下发大模型",
+                intentResult.getIntent(), searchQueries.size());
 
         // 用于存储 AI 完整回答文本，写入会话历史。
         StringBuilder fullAnswer = new StringBuilder();
@@ -145,5 +161,34 @@ public class AiChatServiceImpl implements AiChatService {
         if (!citation.isBlank()) {
             emitter.send(citation);
         }
+    }
+
+    /**
+     * 处理闲聊/无关问题：直接返回校园助手兜底回答，不走 RAG 管道。
+     */
+    private SseEmitter handleChitchat(SseEmitter emitter, String userMessage, String sessionId,
+                                       AuthPrincipal principal, long requestStart) {
+        log.info("意图为闲聊，直接拒答: \"{}\"", userMessage);
+        String rejectMsg = "抱歉，我是河南工业大学校园智能助手，"
+                + "只能回答与校园制度、通知、表格、办事流程等相关的问题。"
+                + "如果您有校园相关的疑问，欢迎随时提问！";
+        try {
+            emitter.send(rejectMsg);
+            emitter.send("[DONE]");
+        } catch (Exception e) {
+            log.debug("发送闲聊拒答时前端已断开");
+        }
+        emitter.complete();
+        // 记录到查询日志
+        RagPromptResult dummyResult = new RagPromptResult();
+        dummyResult.setRejected(true);
+        dummyResult.setRagHit(false);
+        dummyResult.setRetrievedCount(0);
+        dummyResult.setMinScoreUsed(0);
+        dummyResult.setRetrievalLatencyMs(0);
+        ragQueryLogService.record(principal.getUserId(), userMessage, dummyResult,
+                System.currentTimeMillis() - requestStart);
+        sessionHistoryService.addTurn(sessionId, userMessage, rejectMsg);
+        return emitter;
     }
 }

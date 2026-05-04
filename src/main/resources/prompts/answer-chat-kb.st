@@ -19,3 +19,5 @@
 
 【用户问题】：
 {{question}}
+
+{{intentHint}}
