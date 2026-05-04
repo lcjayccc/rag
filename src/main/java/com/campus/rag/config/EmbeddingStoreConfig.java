@@ -1,21 +1,29 @@
 package com.campus.rag.config;
 
+import com.campus.rag.chroma.ChromaClient;
+import com.campus.rag.chroma.ChromaEmbeddingStoreAdapter;
+import com.campus.rag.chroma.ChromaProperties;
 import dev.langchain4j.data.segment.TextSegment;
+import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * 向量存储配置
- *
- * <p>注册 InMemoryEmbeddingStore 为 Spring 单例 Bean，生命周期与应用一致。
- * 服务重启后由 KnowledgeWarmupService（Step 9）自动重新填充。
- */
 @Configuration
+@EnableConfigurationProperties(ChromaProperties.class)
 public class EmbeddingStoreConfig {
 
     @Bean
-    public InMemoryEmbeddingStore<TextSegment> embeddingStore() {
+    @ConditionalOnProperty(name = "rag.vector.store", havingValue = "inmemory", matchIfMissing = true)
+    public EmbeddingStore<TextSegment> inMemoryEmbeddingStore() {
         return new InMemoryEmbeddingStore<>();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "rag.vector.store", havingValue = "chroma")
+    public EmbeddingStore<TextSegment> chromaEmbeddingStore(ChromaClient chromaClient) {
+        return new ChromaEmbeddingStoreAdapter(chromaClient);
     }
 }

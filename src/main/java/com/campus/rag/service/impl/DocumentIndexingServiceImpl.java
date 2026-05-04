@@ -1,6 +1,8 @@
 package com.campus.rag.service.impl;
 
 import com.campus.rag.entity.Document;
+import com.campus.rag.search.Bm25IndexService;
+import com.campus.rag.search.SearchResult;
 import com.campus.rag.service.DocumentIndexingService;
 import dev.langchain4j.data.document.DocumentSplitter;
 import dev.langchain4j.data.document.Metadata;
@@ -34,11 +36,14 @@ public class DocumentIndexingServiceImpl implements DocumentIndexingService {
 
     private final EmbeddingModel embeddingModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
+    private final Bm25IndexService bm25IndexService;
 
     public DocumentIndexingServiceImpl(EmbeddingModel embeddingModel,
-                                       EmbeddingStore<TextSegment> embeddingStore) {
+                                       EmbeddingStore<TextSegment> embeddingStore,
+                                       Bm25IndexService bm25IndexService) {
         this.embeddingModel = embeddingModel;
         this.embeddingStore = embeddingStore;
+        this.bm25IndexService = bm25IndexService;
     }
 
     @Override
@@ -55,6 +60,13 @@ public class DocumentIndexingServiceImpl implements DocumentIndexingService {
         embeddingStore.addAll(embeddings, chunks);
         log.info("[文档索引] [文档ID={}] 向量化完成，向量维度: {}，已写入 EmbeddingStore",
                 document.getId(), embeddings.isEmpty() ? 0 : embeddings.get(0).vector().length);
+
+        // 同步 BM25 索引
+        for (TextSegment chunk : chunks) {
+            SearchResult sr = new SearchResult(chunk.text(), chunk.metadata());
+            bm25IndexService.addDocument(document.getId(), sr);
+        }
+        log.info("[文档索引] [文档ID={}] BM25 索引已同步，{} 个 Chunk", document.getId(), chunks.size());
     }
 
     @Override
@@ -64,7 +76,8 @@ public class DocumentIndexingServiceImpl implements DocumentIndexingService {
         }
 
         embeddingStore.removeAll(metadataKey("documentId").isEqualTo(String.valueOf(documentId)));
-        log.info("[文档索引] [文档ID={}] 已从 EmbeddingStore 移除对应切片", documentId);
+        bm25IndexService.removeDocument(documentId);
+        log.info("[文档索引] [文档ID={}] 已从 EmbeddingStore 和 BM25 移除对应切片", documentId);
     }
 
     private dev.langchain4j.data.document.Document parseDocument(Path filePath) {

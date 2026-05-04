@@ -3,6 +3,7 @@ package com.campus.rag.service;
 import com.campus.rag.entity.Document;
 import com.campus.rag.mapper.DocumentMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,7 @@ import java.util.List;
 
 @Slf4j
 @Service
+@ConditionalOnProperty(name = "rag.vector.store", havingValue = "inmemory", matchIfMissing = true)
 public class KnowledgeWarmupService {
 
     private final DocumentMapper documentMapper;

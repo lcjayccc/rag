@@ -30,7 +30,8 @@ Gradle / IDEA 推荐配置：
 
 - Prompt 必须外置到 `src/main/resources/prompts/`。
 - `file_type` 只保存短扩展名，例如 `pdf`、`docx`、`xlsx`、`pptx`。
-- 当前不要提前引入 Redis、Chroma、OCR、Rerank、Intent Classifier；Query Rewrite 已做最小可验证版本。
+- 当前阶段引入 Chroma（向量持久化）、Redis（会话/限流）、Rerank（DashScope gte-rerank）、Intent Classifier（轻量三分类）；每 Phase 独立可验收可回滚。Query Rewrite 已做最小可验证版本，Phase 3 增强为问题拆分。
+- 不做：OCR（图片扫描件）、Kafka/RocketMQ、分布式锁、复杂权限、MCP 工具集成。
 - 新增或修改数据库字段时必须同步 Entity、Mapper interface、Mapper XML 和相关 SQL。
 
 ## 后端 Codex Agent 启动 Prompt
@@ -67,7 +68,7 @@ git status --short --branch
 - Prompt 必须外置到 src/main/resources/prompts/
 - file_type 只保存短扩展名，例如 pdf/docx/xlsx/pptx
 - 修改数据库字段必须同步 Entity、Mapper interface、Mapper XML 和 SQL
-- 当前不要引入 Redis、Chroma、OCR、Rerank、Intent Classifier
+- 当前阶段引入 Chroma、Redis、Rerank、Intent Classifier；每 Phase 独立可验收可回滚。不做 OCR、Kafka/RocketMQ、分布式锁、复杂权限、MCP 工具集成
 
 验证命令优先使用：
 $env:GRADLE_USER_HOME='E:\Learn\javaEE\Gradle-8.9\caches'

@@ -6,7 +6,7 @@ plugins {
 
 group = 'com.campus'
 version = '0.0.1-SNAPSHOT'
-description = 'ragdemo'
+description = 'campus-rag-backend'
 
 java {
     toolchain {
@@ -48,6 +48,8 @@ dependencies {
     implementation 'dev.langchain4j:langchain4j-document-parser-apache-poi:0.35.0'
     // BCrypt 密码哈希：只引入轻量哈希库，不让 Spring Security 接管接口鉴权。
     implementation 'org.mindrot:jbcrypt:0.4'
+    // HanLP 中文分词（BM25 关键词检索）
+    implementation 'com.hankcs:hanlp:portable-1.8.4'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'com.mysql:mysql-connector-j'
     annotationProcessor 'org.projectlombok:lombok'

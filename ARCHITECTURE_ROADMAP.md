@@ -1,6 +1,6 @@
 # Campus RAG 架构路线图
 
-更新时间：2026-05-04
+更新时间：2026-05-05
 
 ## 1. 项目定位
 
@@ -34,8 +34,10 @@ Campus RAG 是一个面向河南工业大学校园资料的智能问答系统。
 | 文档解析 | PDFBox Parser + Apache POI Parser | PDF / Office 已接入 |
 | 切片 | `DocumentSplitters.recursive(500, 50)` | 已完成 |
 | 向量化 | DashScope `text-embedding-v2` | 已完成 |
-| 向量存储 | `InMemoryEmbeddingStore` | 当前阶段继续使用 |
-| 启动预热 | `KnowledgeWarmupService` | 已完成 |
+| 向量存储 | Chroma REST API v2 + `ChromaEmbeddingStoreAdapter`（可回退 InMemory） | 已完成 |
+| 启动预热 | `KnowledgeWarmupService`（仅 inmemory）+ `Bm25WarmupService`（仅 chroma） | 已完成 |
+| 混合检索 | 向量 + BM25 + RRF 融合 | 已完成 |
+| Rerank | DashScope gte-rerank（失败回退 RRF） | 已完成（API 请求格式待调试） |
 | 删除清理 | 按 `documentId` 移除内存向量切片 | 已完成 |
 | Prompt | `src/main/resources/prompts/` | 已统一外置 |
 | 登录鉴权 | 真实登录 + `ADMIN/USER` | 已完成 |
@@ -272,23 +274,38 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
   - 全量后端测试 22/22 通过。
   - `RagPromptResult.citationMarkdown()` 已兼容新旧引用格式。
 
+### 8.5 开源对标结论摘要（与 nageoffer/ragent）
+
+- 全量对标分析见工作区根目录 `docs/superpowers/specs/2026-05-04-campus-rag-upgrade-design.md`（权威详细设计）。
+- 开源对标分析已整合到 `docs/superpowers/specs/2026-05-04-campus-rag-upgrade-design.md`。
+- **实现侧**：按 Phase 1～7 分阶段全量迭代，不再区分"设计冲刺"与"代码合入"两阶段。
+
 ## 9. 后续基础设施评估
 
 ### Chroma 向量持久化
 
-启动条件：内存向量库重启预热成本开始影响演示，或分类知识库稳定后需要更接近生产形态。
+状态：已完成。
 
-推荐原则：
+选型：Chroma Server（Docker 单容器），通过 REST API 集成（`ChromaEmbeddingStoreAdapter` 实现 `EmbeddingStore<TextSegment>` 接口）。
 
-- 优先替换 `EmbeddingStoreConfig` 中的 `EmbeddingStore` Bean。
-- 避免业务代码依赖具体向量库实现类。
-- `KnowledgeWarmupService` 可保留为迁移或重建工具。
+已完成内容：
+- Chroma REST API v2 集成（`ChromaClient.java`），支持 CRN 租户路由、collection 自动创建（cosine 距离度量）、add/query/delete 全操作。
+- `ChromaEmbeddingStoreAdapter` 实现 `EmbeddingStore<TextSegment>` 接口，业务代码零感知切换。
+- `application.properties` 中 `rag.vector.store=chroma|inmemory` 一键回退开关。
+- `KnowledgeWarmupService` 在 Chroma 模式下自动禁用；`Bm25WarmupService` 仅在 Chroma 模式下激活。
+- 删除一致性：`removeByDocumentId` 同步调用 Chroma delete API 和 BM25 索引清理。
 
 ### Redis
 
-启动条件：需要 Token 黑名单、多轮对话上下文或配置缓存。
+状态：Phase 3 实施中。
 
-当前不提前接入，避免角色管理阶段扩大基础设施复杂度。
+用途边界：Session 历史外置（LIST，TTL 2h）、用户级限流（INCR + TTL 60s）、意图分类热点配置缓存。
+
+关键设计：
+- Key 规范：`session:{id}:history`、`rate:{userId}`、`config:intent:categories`
+- 序列化：JSON（Jackson）
+- 集成：Spring Data Redis + Lettuce + 连接池
+- 降级：Redis 不可用时回退内存 `ConcurrentHashMap`（保留旧 `SessionHistoryService` 作为 fallback Bean）
 
 ### OCR
 
@@ -296,22 +313,55 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 
 OCR 应作为独立链路设计，不混入普通 PDF / Office 解析逻辑。
 
-## 9. 架构约束
+## 10. 深度架构迭代：Phase 1～7 实施计划
 
-### 9.1 防过度设计
+**工期**：约 16～22 个工作日。**目标**：分 Phase 全量实现 Chroma 持久化、混合检索+Rerank、意图分类、Redis 会话、文档摄入增强、管理后台、回归数据集。每个 Phase 独立可验收、可回滚、可发布。
+
+详细设计文档：`docs/superpowers/specs/2026-05-04-campus-rag-upgrade-design.md`
+
+### 10.1 Phase 里程碑
+
+| Phase | 内容 | 预计 | 验收标准 |
+|-------|------|------|---------|
+| **P1** | Chroma 向量持久化 | 2-3 天 | Docker 启动 Chroma；文档上传后可检索；重启后无需预热；`KnowledgeWarmupService` 改为按需工具；22/22 测试不变 |
+| **P2** | 混合检索 + Rerank | 3-4 天 | BM25+向量+RRF 并行检索；Rerank 重排序；消融实验数据：纯向量 vs 混合 vs 混合+Rerank 的 Top-K 召回精度 |
+| **P3** | 意图分类 + Query Rewrite 增强 + Redis 会话 | 2-3 天 | 意图三分类准确率 >90%；问题拆分可用；Redis 会话历史持久化 + 限流；fallback 降级可用 |
+| **P4** | 文档摄入增强 | 2-3 天 | Tika 备选解析器可回退；多策略切片可选；切片元数据含文档标题/页码/章节 |
+| **P5** | 管理后台增强 | 3-4 天 | 统计大屏渲染正确；查询日志分页；系统配置可调节 minScore/TopK；`npm run build` 通过 |
+| **P6** | RAG 回归数据集 | 2-3 天 | 50+ 用例 JSON；`RagRegressionTest` JUnit 可跑；输出命中率/拒答率/平均延迟/分类隔离准确率 |
+| **P7** | 联调与答辩准备 | 2 天 | 前后端联调通过；论文截图与图表就绪；答辩演示流程确认 |
+
+### 10.2 最小可发表组合（时间不够时降级方案）
+
+- 只做 Phase 1（Chroma）+ Phase 2 轻量 Hybrid（无 Rerank）+ Phase 6 数据集
+- 意图分类和 Redis 会话通过 Prompt 增强模拟，不进独立模块
+- Rerank 留作论文展望/消融对照组（标注"仅离线评估"）
+
+### 10.3 Phase 完成验收（主控勾选）
+
+- [x] P1：Chroma 运行态替代 InMemory，重启后向量不丢失
+- [x] P2：混合检索 + Rerank 链路可运行，消融数据产出
+- [ ] P3：意图分类可用，Redis fallback 不阻塞问答
+- [ ] P4：新文档可选用结构感知切片，元数据写入向量
+- [ ] P5：统计大屏数据正确，系统配置即时生效
+- [ ] P6：回归数据集可 JUnit 跑通，关键指标产出
+- [ ] P7：前后端联调无误，答辩 demo 可用
+
+## 11. 架构约束
+
+### 11.1 防过度设计
 
 当前阶段禁止引入：
 
 - RocketMQ、Kafka、Zookeeper
 - 分布式锁
-- Redis 会话体系
-- Chroma / Milvus
-- Rerank、Intent Classifier
-- 复杂权限框架
+- 复杂权限框架（保持 HMAC + ADMIN/USER）
+- OCR（图片扫描件识别）
+- MCP 工具集成
 
-除非当前阶段有明确验收需求，否则不新增基础设施。
+**已解除的旧约束**（Phase 1～7 正式引入）：Chroma、Redis、Rerank（DashScope gte-rerank）、Intent Classifier（轻量三分类）。
 
-### 9.2 Prompt 外置
+### 11.2 Prompt 外置
 
 所有 System Prompt 必须外置到：
 
@@ -326,7 +376,7 @@ src/main/resources/prompts/
 
 禁止在 Service 或 Controller 中硬编码大段 Prompt。
 
-### 9.3 面向接口编程
+### 11.3 面向接口编程
 
 业务代码注入 LangChain4j 组件时使用接口类型：
 
@@ -335,7 +385,7 @@ src/main/resources/prompts/
 
 具体实现类只允许出现在配置类中，例如 `EmbeddingStoreConfig`。
 
-### 9.4 MyBatis XML 同步
+### 11.4 MyBatis XML 同步
 
 新增或修改数据库字段时，必须同步：
 
@@ -344,13 +394,13 @@ src/main/resources/prompts/
 - Mapper XML `resultMap`
 - INSERT / UPDATE / SELECT SQL
 
-### 9.5 文档类型策略
+### 11.5 文档类型策略
 
 - `file_type` 保存短扩展名，例如 `pdf`、`docx`、`xlsx`、`pptx`。
 - 不把完整 MIME 写入 `file_type`。
 - 如果未来确实需要保留完整 MIME，应新增独立字段。
 
-### 9.6 RAG 黄金测试
+### 11.6 RAG 黄金测试
 
 每次阶段性提交前至少验证：
 
@@ -360,9 +410,11 @@ src/main/resources/prompts/
 4. 流式测试：前端能收到完整回答和 `[DONE]`。
 5. 重启测试：后端重启后已完成文档可重新参与检索。
 
-## 10. 当前最近任务
+## 12. 当前最近任务
 
 1. 扩充知识库文档数量，优先补充稳定可引用的校园制度、通知、表格和 FAQ。
 2. 浏览器联调验证 Chunk 行内角标溯源和 Query Rewrite 实际效果。
-3. 整理 RAG 问答效果回归数据集，覆盖命中、拒答、日期、流式完成和分类范围检索。
-4. 提交前运行 `clean testClasses` 和全量 `test`，保持 22/22 后端测试通过基线。
+3. 整理 RAG 问答效果回归数据集（Phase 6），覆盖命中、拒答、日期、流式完成和分类范围检索。
+4. 调试 DashScope gte-rerank API 请求格式，恢复 Rerank 重排序能力。
+5. 启动 Phase 3：意图分类 + Query Rewrite 增强 + Redis 会话/限流。
+6. 提交前运行 `clean testClasses` 和全量 `test`，保持 44/44 后端测试通过基线。

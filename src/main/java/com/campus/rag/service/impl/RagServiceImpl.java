@@ -2,16 +2,11 @@ package com.campus.rag.service.impl;
 
 import com.campus.rag.dto.RagPromptResult;
 import com.campus.rag.dto.RagSource;
+import com.campus.rag.search.HybridSearchService;
+import com.campus.rag.search.SearchResult;
 import com.campus.rag.service.RagService;
 import dev.langchain4j.data.document.Metadata;
-import dev.langchain4j.data.embedding.Embedding;
-import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.chat.ChatLanguageModel;
-import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.store.embedding.EmbeddingMatch;
-import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
-import dev.langchain4j.store.embedding.EmbeddingSearchResult;
-import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.model.input.PromptTemplate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,16 +20,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey;
-
 @Slf4j
 @Service
 public class RagServiceImpl implements RagService {
 
     private static final int TOP_K = 3;
 
-    private final EmbeddingStore<TextSegment> embeddingStore;
-    private final EmbeddingModel embeddingModel;
+    private final HybridSearchService hybridSearchService;
     private final ChatLanguageModel chatLanguageModel;
 
     @Value("${rag.retrieval.min-score:0.65}")
@@ -46,11 +38,9 @@ public class RagServiceImpl implements RagService {
     @Value("classpath:prompts/query-rewrite.st")
     private Resource rewritePromptResource;
 
-    public RagServiceImpl(EmbeddingStore<TextSegment> embeddingStore,
-                          EmbeddingModel embeddingModel,
+    public RagServiceImpl(HybridSearchService hybridSearchService,
                           ChatLanguageModel chatLanguageModel) {
-        this.embeddingStore = embeddingStore;
-        this.embeddingModel = embeddingModel;
+        this.hybridSearchService = hybridSearchService;
         this.chatLanguageModel = chatLanguageModel;
     }
 
@@ -60,59 +50,43 @@ public class RagServiceImpl implements RagService {
         long startTime = System.currentTimeMillis();
 
         try {
-            // 1. 问题向量化
-            Embedding questionEmbedding = embeddingModel.embed(userMessage).content();
+            // 1. 混合检索（向量 + BM25 → RRF → Rerank）
+            List<SearchResult> results = hybridSearchService.search(userMessage, categoryId, TOP_K, minScore);
 
-            // 2. 内存向量库 Top-K 检索；categoryId 为空时全库检索，不为空时只召回指定分类切片。
-            var searchBuilder = EmbeddingSearchRequest.builder()
-                    .queryEmbedding(questionEmbedding)
-                    .maxResults(TOP_K)
-                    .minScore(minScore);
+            log.info("【RAG 检索大脑】命中强相关知识碎片数量: {}", results.size());
 
-            if (categoryId != null) {
-                searchBuilder.filter(metadataKey("categoryId").isEqualTo(String.valueOf(categoryId)));
-            }
-
-            EmbeddingSearchRequest searchRequest = searchBuilder.build();
-
-            EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(searchRequest);
-            List<EmbeddingMatch<TextSegment>> matches = searchResult.matches();
-
-            log.info("【RAG 检索大脑】命中强相关知识碎片数量: {}", matches.size());
-
-            // 3. 提取碎片文本并拼接，注入段落来源标签。
-            String context = buildContextWithCitations(matches);
+            // 2. 提取碎片文本并拼接，注入段落来源标签。
+            String context = buildContextWithCitations(results);
 
             if (context.isEmpty()) {
                 context = "暂无相关校园文档知识。";
             }
 
-            // 4. 组装终极 Prompt
+            // 3. 组装终极 Prompt
             String templateContent = promptTemplateResource.getContentAsString(StandardCharsets.UTF_8);
             PromptTemplate promptTemplate = PromptTemplate.from(templateContent);
 
             Map<String, Object> variables = new HashMap<>();
-            variables.put("currentDate", LocalDate.now().toString()); // 注入当前时间，解决千问知识截断幻觉
+            variables.put("currentDate", LocalDate.now().toString());
             variables.put("context", context);
             variables.put("question", userMessage);
-            variables.put("sourceNames", sourceNames(matches));
-            variables.put("citationIndex", buildCitationIndex(matches));
+            variables.put("sourceNames", sourceNames(results));
+            variables.put("citationIndex", buildCitationIndex(results));
 
             RagPromptResult result = new RagPromptResult();
             result.setPrompt(promptTemplate.apply(variables).text());
-            result.setRetrievedCount(matches.size());
-            result.setTopScore(matches.stream().map(EmbeddingMatch::score).findFirst().orElse(null));
-            result.setRagHit(!matches.isEmpty());
-            result.setRejected(matches.isEmpty());
+            result.setRetrievedCount(results.size());
+            result.setTopScore(results.stream().map(SearchResult::effectiveScore).findFirst().orElse(null));
+            result.setRagHit(!results.isEmpty());
+            result.setRejected(results.isEmpty());
             result.setMinScoreUsed(minScore);
             result.setRetrievalLatencyMs(System.currentTimeMillis() - startTime);
-            result.setSources(toSources(matches));
-            result.setCitationIndex(buildCitationIndex(matches));
+            result.setSources(toSources(results));
+            result.setCitationIndex(buildCitationIndex(results));
             return result;
 
         } catch (Exception e) {
             log.error("RAG 检索与组装 Prompt 失败", e);
-            // 降级策略：如果 RAG 报错，直接返回原问题，保证系统不崩溃，同时保留一次拒答型日志数据。
             RagPromptResult result = new RagPromptResult();
             result.setPrompt("你是河南工业大学的校园智能助手。知识库检索暂时不可用，请不要编造答案。"
                     + "请直接回答：抱歉，我的知识库中暂时没有查到相关信息，建议您联系学校相关部门确认。"
@@ -126,49 +100,49 @@ public class RagServiceImpl implements RagService {
         }
     }
 
-    private List<RagSource> toSources(List<EmbeddingMatch<TextSegment>> matches) {
-        return matches.stream()
-                .map(match -> {
-                    Metadata metadata = match.embedded().metadata();
+    private List<RagSource> toSources(List<SearchResult> results) {
+        return results.stream()
+                .map(r -> {
+                    Metadata metadata = r.getMetadata();
                     return new RagSource(
                             parseLong(metadata.getString("documentId")),
                             metadata.getString("fileName"),
                             parseInteger(metadata.getString("chunkIndex")),
-                            match.score()
+                            r.effectiveScore()
                     );
                 })
                 .toList();
     }
 
-    private String sourceNames(List<EmbeddingMatch<TextSegment>> matches) {
-        return toSources(matches).stream()
+    private String sourceNames(List<SearchResult> results) {
+        return toSources(results).stream()
                 .map(RagSource::getFileName)
                 .filter(name -> name != null && !name.isBlank())
                 .distinct()
                 .collect(Collectors.joining("、"));
     }
 
-    private String buildContextWithCitations(List<EmbeddingMatch<TextSegment>> matches) {
+    private String buildContextWithCitations(List<SearchResult> results) {
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < matches.size(); i++) {
-            EmbeddingMatch<TextSegment> match = matches.get(i);
-            Metadata meta = match.embedded().metadata();
+        for (int i = 0; i < results.size(); i++) {
+            SearchResult r = results.get(i);
+            Metadata meta = r.getMetadata();
             String fileName = meta.getString("fileName") != null ? meta.getString("fileName") : "未知文档";
             String chunkIdx = meta.getString("chunkIndex") != null ? meta.getString("chunkIndex") : "?";
             sb.append("[来源").append(i + 1).append("：")
               .append(fileName).append("-段落").append(chunkIdx).append("]\n");
-            sb.append(match.embedded().text());
-            if (i < matches.size() - 1) {
+            sb.append(r.getText());
+            if (i < results.size() - 1) {
                 sb.append("\n\n---\n\n");
             }
         }
         return sb.toString();
     }
 
-    private String buildCitationIndex(List<EmbeddingMatch<TextSegment>> matches) {
+    private String buildCitationIndex(List<SearchResult> results) {
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < matches.size(); i++) {
-            Metadata meta = matches.get(i).embedded().metadata();
+        for (int i = 0; i < results.size(); i++) {
+            Metadata meta = results.get(i).getMetadata();
             String fileName = meta.getString("fileName") != null ? meta.getString("fileName") : "未知文档";
             String chunkIdx = meta.getString("chunkIndex") != null ? meta.getString("chunkIndex") : "?";
             sb.append("  [").append(i + 1).append("] ")
